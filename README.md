@@ -1,5 +1,9 @@
 # 楚漢 3D 象棋 (Xiangqi 3D)
 
+**Play now: https://gordon6619.github.io/xiangqi-3d/**
+
+The site is served by GitHub Pages from the `gh-pages` branch. After changing `main`, publish with `git push origin main:gh-pages`.
+
 A 3D Chinese chess game that runs in the browser. Everything it needs is in this folder: no build step, no CDN, no audio files.
 
 ## Run it
