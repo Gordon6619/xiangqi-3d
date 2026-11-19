@@ -1,0 +1,10 @@
+{
+  "name": "楚漢 3D 象棋",
+  "short_name": "3D象棋",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#15110e",
+  "theme_color": "#15110e",
+  "icons": []
+}

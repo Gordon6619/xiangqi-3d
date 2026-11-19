@@ -1,0 +1,16 @@
+{
+  "name": "xiangqi-3d",
+  "version": "1.0.0",
+  "description": "楚漢 3D 象棋 — realistic 3D Chinese chess with AI, online play, custom characters and synthesized SFX",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "peerjs": "^1.5.4",
+    "three": "^0.170.0"
+  }
+}
