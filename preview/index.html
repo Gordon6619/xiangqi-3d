@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#15110e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>楚漢 3D 象棋</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="manifest" href="manifest.webmanifest">
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.js" } }</script>
+<script src="vendor/peerjs.min.js"></script>
+</head>
+<body>
+<div id="app">
+  <div id="stage" aria-label="3D 棋盤"></div>
+
+  <!-- top bar -->
+  <header id="topbar">
+    <button class="icon" id="btnMenu" title="選單" aria-label="選單">☰</button>
+    <div id="turnBox"><span id="turnDot"></span><span id="turnText">紅方先行</span></div>
+    <div class="spacer"></div>
+    <button class="icon" id="btnUndo" title="悔棋" aria-label="悔棋">↶</button>
+    <button class="icon" id="btnFlip" title="翻轉視角" aria-label="翻轉視角">⇅</button>
+    <button class="icon" id="btnCustom" title="角色自訂" aria-label="角色自訂">🎨</button>
+    <button class="icon" id="btnSound" title="音效" aria-label="音效">🔊</button>
+  </header>
+
+  <!-- info panel (side on desktop, bottom drawer on phones) -->
+  <aside id="panel" class="collapsed">
+    <div id="panelHandle"><span id="statusLine">準備開始</span><span class="chev">▴</span></div>
+    <div id="panelBody">
+      <div id="modeLine"></div>
+      <div class="cap-row"><span class="lbl red">紅方吃子</span><div id="capRed" class="caps"></div></div>
+      <div class="cap-row"><span class="lbl black">黑方吃子</span><div id="capBlack" class="caps"></div></div>
+      <h3>棋譜</h3>
+      <ol id="moveList"></ol>
+      <div class="row">
+        <button id="btnResign" class="ghost">認輸</button>
+        <button id="btnNew" class="ghost">新局</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 改版原型對照 -->
+  <section id="lab" hidden aria-label="改版原型對照">
+    <div class="lab-head">
+      <b>改版原型</b>
+      <div class="seg" id="labVer"><button data-v="v1">改版前</button><button data-v="v2">改版後</button></div>
+      <button id="labAuto" class="primary small">示範兩步</button>
+      <button id="labMin" class="icon tiny" aria-label="收合">▾</button>
+    </div>
+    <div class="lab-body">
+      <div class="lab-row"><span class="lab-lbl">強度</span><div class="seg" id="labInt"><button data-i="fast">快速</button><button data-i="standard">標準</button><button data-i="cinematic">電影</button></div><button id="labReset" class="ghost small">重設局面</button></div>
+      <p class="hint" id="labHint"></p>
+      <details><summary>手感調整（起始值）</summary><div id="labTune"></div></details>
+      <div id="labStats" class="lab-stats"></div>
+    </div>
+  </section>
+
+  <div id="banner" aria-live="assertive"></div>
+  <div id="thinking" hidden><span></span><span></span><span></span> 電腦思考中</div>
+
+  <!-- start / main menu -->
+  <div class="modal" id="menu">
+    <div class="card wide">
+      <h1>楚漢 <b>3D</b> 象棋</h1>
+      <p class="sub">擬真 3D · 角色動物自訂 · 單機 / 線上對戰</p>
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="solo">單人對戰</button>
+        <button class="tab" data-tab="local">雙人同機</button>
+        <button class="tab" data-tab="online">線上對戰</button>
+      </div>
+      <section class="tabpane" data-pane="solo">
+        <label>執棋
+          <select id="soloSide"><option value="1">紅方（先手）</option><option value="-1">黑方（後手）</option><option value="0">隨機</option></select>
+        </label>
+        <label>難度
+          <select id="soloLevel">
+            <option value="0">入門</option><option value="1" selected>業餘</option><option value="2">高手</option><option value="3">大師</option>
+          </select>
+        </label>
+        <button class="primary" id="startSolo">開始對局</button>
+      </section>
+      <section class="tabpane" data-pane="local" hidden>
+        <p class="hint">兩位玩家輪流在同一裝置上操作，視角會自動跟隨。</p>
+        <label class="check"><input type="checkbox" id="autoFlip" checked> 每步自動翻轉視角</label>
+        <button class="primary" id="startLocal">開始對局</button>
+      </section>
+      <section class="tabpane" data-pane="online" hidden>
+        <p class="hint">點對點 WebRTC 連線，建立房間後把代碼或連結傳給朋友。</p>
+        <div class="online-grid">
+          <div>
+            <label>房主執棋
+              <select id="hostSide"><option value="1">紅方</option><option value="-1">黑方</option></select>
+            </label>
+            <button class="primary" id="btnHost">建立房間</button>
+            <div id="hostInfo" hidden>
+              <div class="code" id="roomCode">------</div>
+              <div class="row"><button class="ghost small" id="copyLink">複製邀請連結</button></div>
+              <p class="hint" id="hostWait">等待對手加入…</p>
+            </div>
+          </div>
+          <div>
+            <label>房間代碼
+              <input id="joinCode" maxlength="6" placeholder="例如 7K3QXP" autocomplete="off" autocapitalize="characters">
+            </label>
+            <button class="primary" id="btnJoin">加入房間</button>
+          </div>
+        </div>
+        <p class="hint err" id="netErr"></p>
+      </section>
+      <div class="row foot">
+        <button class="ghost" id="openCustom">🎨 角色與動物自訂</button>
+        <button class="ghost" id="openLab">🧪 改版原型對照</button>
+        <button class="ghost" id="closeMenu" hidden>返回棋局</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- customization -->
+  <div class="modal" id="custom" hidden>
+    <div class="card wide">
+      <h2>角色與動物自訂</h2>
+      <div class="side-tabs">
+        <button class="stab active" data-side="red">紅方軍團</button>
+        <button class="stab" data-side="black">黑方軍團</button>
+      </div>
+      <div id="customSide"></div>
+      <h3>場景與畫面</h3>
+      <div class="grid2">
+        <label>棋盤材質<select id="boardStyle"></select></label>
+        <label>角色大小<input type="range" id="figScale" min="0.7" max="1.4" step="0.05"></label>
+        <label>動畫速度<input type="range" id="animSpeed" min="0.5" max="2" step="0.1"></label>
+        <label>音量<input type="range" id="volume" min="0" max="1" step="0.05"></label>
+        <label>演出強度<select id="intensity"><option value="fast">快速</option><option value="standard">標準（全盤構圖）</option><option value="cinematic">電影（將殺特寫）</option></select></label>
+        <label class="check"><input type="checkbox" id="cinematic"> 改版前：吃子電影鏡頭</label>
+        <label class="check"><input type="checkbox" id="badges"> 頭頂浮動字牌</label>
+        <label class="check"><input type="checkbox" id="music"> 古箏背景音樂</label>
+        <label class="check"><input type="checkbox" id="hints"> 顯示可走位置</label>
+        <label class="check"><input type="checkbox" id="idleSounds"> 待機環境音（馬嘶、象鳴…）</label>
+      </div>
+      <div class="row foot"><button class="primary" id="customDone">完成</button></div>
+    </div>
+  </div>
+
+  <!-- dialogs -->
+  <div class="modal" id="dialog" hidden>
+    <div class="card">
+      <h2 id="dlgTitle"></h2>
+      <p id="dlgText"></p>
+      <div class="row" id="dlgBtns"></div>
+    </div>
+  </div>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
