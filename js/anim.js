@@ -41,6 +41,7 @@ const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a
 const hold = (p, i = 0.18, o = 0.82) => smooth(0, i, p) * (1 - smooth(o, 1, p)); // 漸入、停留、漸出
 const rnd = (a, b) => a + Math.random() * (b - a);
 const IDLE_SLOW = 1.45;   // 待機動作放慢，看起來更沉穩
+const LEFT_BUSY = new Set(['marshal', 'marshalFlag', 'marshalBlade', 'marshalHalberd']);   // 左手插腰或按劍柄、走路時不擺動的角色
 
 function scheduler(rig, time, list) {
   const s = rig.idle ??= { cur: null, start: 0, dur: 0, next: time + rnd(0.5, 3.5), fired: {} };
@@ -83,6 +84,9 @@ const REST = {
   default: { a0: 0.08, a1: 0.08, f0: -0.15, f1: -0.15, a0z: -0.1, a1z: 0.1, weapX: 0 },
   marshal: { a0: -0.25, f0: -1.7, a0z: -0.75, a1: 0.1, f1: -0.35, a1z: 0.12, weapX: 0.95 },
   marshalFlag: { a0: -0.25, f0: -1.7, a0z: -0.75, a1: -0.35, f1: -0.9, a1z: 0.1, weapX: 1.25 },
+  marshalBlade: { a0: -0.18, f0: -1.35, a0z: 0.32, a1: -0.12, f1: -0.62, a1z: 0.1, weapX: 0.74 },     // 右手直立持大刀，左手按腰間劍柄
+  marshalSword: { a0: -0.5, f0: -0.8, a0z: 0.5, a1: -0.5, f1: -0.8, a1z: -0.5, weapX: 2.1 },          // 雙手按劍柄，劍尖點地立於身前
+  marshalHalberd: { a0: -0.18, f0: -1.35, a0z: 0.32, a1: -0.12, f1: -0.62, a1z: 0.1, weapX: 0.74 },
   official: { a0: -0.55, f0: -1.1, a0z: 0.45, a1: -0.55, f1: -1.1, a1z: -0.45, weapX: 0 },
   strategist: { a0: 0.35, f0: -1.3, a0z: 0.3, a1: -0.4, f1: -1.5, a1z: -0.25, weapX: 1.6 },
   chancellor: { a0: -0.6, f0: -1.25, a0z: 0.5, a1: -0.6, f1: -1.25, a1z: -0.5, weapX: 1.85 },
@@ -107,6 +111,9 @@ const shift = (P, e) => { P.hipsZ += 0.05 * e; P.chestZ -= 0.06 * e; P.l0z -= 0.
 const BIPED_IDLE = {
   marshal: [['look', 3.2], ['raiseSword', 2.6], ['command', 2.4], ['plant', 3.0], ['shift', 2.4], ['capeSwirl', 2.0]],
   marshalFlag: [['look', 3.2], ['wave', 2.6], ['command', 2.4], ['shift', 2.4]],
+  marshalBlade: [['look', 3.2], ['brandish', 3.0], ['thump', 2.0], ['command', 2.6], ['strokeBeard', 3.0], ['shift', 2.4], ['capeSwirl', 2.2]],
+  marshalSword: [['look', 3.2], ['raiseSword', 2.8], ['command', 2.6], ['capeSwirl', 2.2], ['shift', 2.4], ['strokeBeard', 3.0]],
+  marshalHalberd: [['look', 3.0], ['thump', 2.0], ['drill', 2.6], ['command', 2.4], ['shift', 2.4], ['strokeBeard', 3.0]],
   official: [['look', 3], ['read', 3.5], ['bow', 2.4], ['nod', 1.6], ['shift', 2.4]],
   strategist: [['fan', 3.2], ['strokeBeard', 3.0], ['ponder', 3.0], ['look', 3], ['fanPoint', 2.2]],
   chancellor: [['bow', 2.8], ['strokeBeard', 3.0], ['look', 3], ['nod', 1.6], ['adjustHat', 2.2]],
@@ -140,6 +147,14 @@ function applyBipedIdle(P, a, r) {
       P.a1 = P.a1 * (1 - e) - 0.5 * e; P.f1 = P.f1 * (1 - e) - 0.8 * e; P.a1z = P.a1z * (1 - e) - 0.5 * e; P.weapX = P.weapX * (1 - e) + 2.1 * e;
       P.headX += 0.1 * e; break;
     case 'capeSwirl': if (r.cape) r.capeBoost = e; look(P, p, 0.4); break;
+    case 'brandish': { // 舞大刀：高舉過頂，斜劈一圈再收回
+      const sw = Math.sin(p * TAU);
+      P.a1 = P.a1 * (1 - e) + (-2.25 + sw * 0.5) * e; P.f1 = P.f1 * (1 - e) - 0.25 * e; P.a1z += -0.45 * sw * e;
+      P.weapX = P.weapX * (1 - e) + (0.25 + sw * 0.25) * e; P.chestY += sw * 0.28 * e; P.headX -= 0.15 * e; P.l1 -= 0.15 * e;
+      if (r.capeBoost !== undefined) r.capeBoost = e * 0.6;
+      if (Math.abs(sw) > 0.97 && a.once('b' + Math.round(p * 2))) idleHook('sound:whoosh', r.weapon, r);
+      break;
+    }
     case 'wave': // 揮動令旗或揮手
       P.a1 = P.a1 * (1 - e) + (-2.4 + Math.sin(p * TAU * 3) * 0.45) * e; P.f1 = P.f1 * (1 - e) - 0.2 * e; P.weapX = P.weapX * (1 - e) + 0.6 * e; P.headX -= 0.15 * e;
       if (r.flag) r.flagBoost = e; break;
@@ -213,6 +228,9 @@ function poseBiped(r, st, br, time) {
   const P = restPose(r.role), mode = st.mode, w = st.walk || 0, a = st.act || 0;
   const twoHanded = r.role === 'official' || r.role === 'chancellor' || r.seated;
   r.flagBoost = 0; r.capeBoost = 0; r.wingWobble = 0;
+  if ((mode === 'walk' || mode === 'gallop' || mode === 'gait') && r.role === 'marshalSword') {
+    Object.assign(P, { a1: 0.1, f1: -0.35, a1z: 0.12, weapX: 0.95 });   // 行走時改為右手提劍、劍尖斜指地面
+  }
   if (mode === 'walk' || mode === 'gallop') {
     // 一般步態：髖部擺動、擺動期屈膝、每週期上下起伏兩次、骨盆擺動、反向扭轉、擺臂
     const s = Math.sin(w), c = Math.cos(w), amp = st.amp ?? 1, spd = st.speed ?? 0.6;
@@ -224,7 +242,7 @@ function poseBiped(r, st, br, time) {
     P.chestY = s * 0.1 * amp; P.headY = -P.chestY * 0.6;
     P.chestX = (0.04 + 0.1 * spd) * amp;
     if (!twoHanded) {
-      if (r.role !== 'marshal' && r.role !== 'marshalFlag') { P.a0 = s * 0.45 * amp; P.f0 = -0.25 - Math.max(0, -s) * 0.3; }
+      if (!LEFT_BUSY.has(r.role)) { P.a0 = s * 0.45 * amp; P.f0 = -0.25 - Math.max(0, -s) * 0.3; }
       if (P.weapX === 0 || r.role === 'archer' || r.role === 'loader') { P.a1 = -s * 0.45 * amp; P.f1 = -0.25 - Math.max(0, s) * 0.3; }
       else P.a1 += -s * 0.12 * amp;
     }
@@ -249,7 +267,7 @@ function poseBiped(r, st, br, time) {
     P.chestX = (0.03 + 0.07 * spd) * amp + (st.lean || 0);
     if (!twoHanded) {
       const sw = Math.cos(TAU * uL) * (0.32 + 0.1 * spd) * amp;         // 手臂與同側腿反向擺動
-      if (r.role !== 'marshal' && r.role !== 'marshalFlag') { P.a0 = P.a0 * (1 - amp) + sw; P.f0 = P.f0 * (1 - amp) + (-0.22 - Math.max(0, -sw) * 0.5); }
+      if (!LEFT_BUSY.has(r.role)) { P.a0 = P.a0 * (1 - amp) + sw; P.f0 = P.f0 * (1 - amp) + (-0.22 - Math.max(0, -sw) * 0.5); P.a0z = P.a0z * (1 - amp) - 0.1 * amp; }
       if (P.weapX === 0 || r.role === 'archer' || r.role === 'loader') { P.a1 = P.a1 * (1 - amp) - sw; P.f1 = P.f1 * (1 - amp) + (-0.22 - Math.max(0, sw) * 0.5); }
       else P.a1 += -sw * 0.25;
     }
