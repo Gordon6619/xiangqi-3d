@@ -6,6 +6,8 @@ import { buildPiece, MODEL_OPTIONS, MODEL_NAMES, MEANING, PALETTES, defaultMap }
 import { Tweener, poseRig, Particles, ease, setIdleHook } from './anim.js';
 import { SFX } from './audio.js';
 import { NetPlay } from './net.js';
+import { Clock, Timeline } from './timeline.js';
+import { createChoreo, TUNE_DEFAULTS } from './choreo.js';
 
 const $ = s => document.querySelector(s);
 const sideName = s => (s === RED ? '紅方' : '黑方');
@@ -21,9 +23,10 @@ const DEFAULTS = {
   red: { map: defaultMap(RED), palette: 'crimson' },
   black: { map: defaultMap(BLACK), palette: 'obsidian' },
   board: 'rosewood', figureScale: 1, speed: 1, volume: 0.8, cinematic: true, badges: false, music: false, sound: true, hints: true, idleSounds: true,
+  animVersion: 'v2', intensity: 'standard', tune: { ...TUNE_DEFAULTS },
 };
 function loadSettings() {
-  try { const s = JSON.parse(localStorage.getItem('xq3d-settings-v3')); if (s) return { ...structuredClone(DEFAULTS), ...s }; } catch { /* storage unavailable */ }
+  try { const s = JSON.parse(localStorage.getItem('xq3d-settings-v3')); if (s) return { ...structuredClone(DEFAULTS), ...s, tune: { ...TUNE_DEFAULTS, ...(s.tune || {}) } }; } catch { /* storage unavailable */ }
   return structuredClone(DEFAULTS);
 }
 const settings = loadSettings();
@@ -43,6 +46,8 @@ let mode = 'menu';                           // solo | local | online
 let humanSide = RED, level = 1, autoFlip = true;
 let remoteArmy = null;                       // opponent customization in online mode
 const states = new Map();                    // obj -> pose state
+const timeline = new Timeline();
+const isV2 = () => settings.animVersion === 'v2';
 
 /* ------------------------------ AI worker ------------------------------ */
 let worker = null, aiReq = 0;
@@ -80,6 +85,8 @@ let pendingRebuild = false;
 function requestRebuild() { if (busy) pendingRebuild = true; else rebuildPieces(); }
 function rebuildPieces() {
   pendingRebuild = false;
+  timeline.finishAll();
+  stage.clearSeal(); stage.setLandFrame(null);
   pieceGroup.clear(); states.clear();
   graveyard.forEach(o => stage.scene.remove(o)); graveyard = [];
   pieces = new Array(90).fill(null);
@@ -122,10 +129,18 @@ function refreshMarkers() {
     stage.showSelected(rowOf(selected), colOf(selected));
   }
   const last = game.history[game.history.length - 1];
-  if (last) stage.showLast([rowOf(mFrom(last.m)), colOf(mFrom(last.m))], [rowOf(mTo(last.m)), colOf(mTo(last.m))]);
-  else stage.showLast(null);
   const kingIdx = last?.check ? findKing(game.board, game.turn) : -1;
-  stage.showCheck(kingIdx >= 0 ? cellPos(rowOf(kingIdx), colOf(kingIdx)) : null);
+  if (isV2()) { // 改版：落地細框 + 將帥腳下印記
+    stage.showLast(null); stage.showCheck(null);
+    if (last) { const t = mTo(last.m); if (!stage.landFrame?.visible || stage.landFrame.position.distanceTo(cellPos(rowOf(t), colOf(t), 0.016)) > 0.01) stage.setLandFrame(rowOf(t), colOf(t)); }
+    else stage.setLandFrame(null);
+    if (kingIdx < 0) stage.clearSeal(); else if (!stage.seal) stage.showSeal(cellPos(rowOf(kingIdx), colOf(kingIdx)), game.turn);
+  } else {
+    stage.setLandFrame(null); stage.clearSeal();
+    if (last) stage.showLast([rowOf(mFrom(last.m)), colOf(mFrom(last.m))], [rowOf(mTo(last.m)), colOf(mTo(last.m))]);
+    else stage.showLast(null);
+    stage.showCheck(kingIdx >= 0 ? cellPos(rowOf(kingIdx), colOf(kingIdx)) : null);
+  }
   updateHud();
 }
 function updateHud() {
@@ -377,13 +392,38 @@ async function animateMove(m, rec) {
   await faceHome(obj);
 }
 
+/* ------------------------------ 改版編排 ------------------------------ */
+const choreo = createChoreo({ stage, fx, sfx, timeline, states, settings, placeInGrave: (o, instant) => placeInGrave(o, instant), cellPos });
+function screenBetween(from, to) { // the single piece a cannon jumps over (炮架)
+  const fr = rowOf(from), fc = colOf(from), tr = rowOf(to), tc = colOf(to);
+  if (fr !== tr && fc !== tc) return null;
+  const dr = Math.sign(tr - fr), dc = Math.sign(tc - fc);
+  for (let r = fr + dr, c = fc + dc; r !== tr || c !== tc; r += dr, c += dc) if (pieces[idx(r, c)]) return pieces[idx(r, c)];
+  return null;
+}
+async function animateMoveV2(m, rec) {
+  const from = mFrom(m), to = mTo(m);
+  const obj = pieces[from], victim = rec.cap ? pieces[to] : null;
+  const screen = victim && obj.userData.typeKey === 'C' ? screenBetween(from, to) : null;
+  stage.clearSeal();
+  const p0 = obj.position.clone().setY(0), p1 = cellPos(rowOf(to), colOf(to));
+  pieces[to] = obj; pieces[from] = null;
+  const kIdx = rec.check ? findKing(game.board, game.turn) : -1;
+  await choreo.play({
+    obj, victim, screen, p0, p1, to: { r: rowOf(to), c: colOf(to) },
+    check: kIdx >= 0 ? { pos: cellPos(rowOf(kIdx), colOf(kIdx)), side: game.turn } : null,
+    curve: knightCurve(obj.userData.typeKey, p0, p1),
+  });
+  obj.position.copy(p1);
+}
+
 /* ------------------------------ move flow ------------------------------ */
 async function commitMove(m, { fromNet = false } = {}) {
   if (busy || !game.isLegal(m)) return false;
   busy = true; selected = -1; stage.clearMarkers();
   const rec = game.play(m);
   if (mode === 'online' && !fromNet) net.send({ t: 'move', m, n: game.history.length });
-  await animateMove(m, rec);
+  if (isV2()) await animateMoveV2(m, rec); else await animateMove(m, rec);
   busy = false;
   if (pendingRebuild) rebuildPieces();
   refreshMarkers();
@@ -391,9 +431,10 @@ async function commitMove(m, { fromNet = false } = {}) {
   return true;
 }
 function afterMove(rec) {
+  updateLab();
   if (game.result) return endGame();
   if (rec.check) {
-    sfx.check(); banner('將 軍 !');
+    if (!isV2()) { sfx.check(); banner('將 軍 !'); }   // 改版：印記與短鼓已在同一段節奏裡
     const k = pieces[findKing(game.board, game.turn)];
     if (k) setPose(k, 'guard');
     setTimeout(() => { if (k && states.get(k)?.mode === 'guard') setPose(k, 'idle'); }, 1500);
@@ -402,6 +443,7 @@ function afterMove(rec) {
   maybeAI();
 }
 async function maybeAI() {
+  if (mode === 'demo') return demoReply();
   if (mode !== 'solo' || game.result || game.turn === humanSide || aiThinking) return;
   aiThinking = true; $('#thinking').hidden = false;
   const startHist = game.history.length, t0 = performance.now();
@@ -412,9 +454,34 @@ async function maybeAI() {
   if (mode !== 'solo' || game.history.length !== startHist || !res.move) return; // state changed meanwhile (undo / new game)
   commitMove(res.move);
 }
-function endGame() {
+/** 電影模式：將殺時的英雄特寫，點一下收尾 */
+function heroCloseup(obj) {
+  return new Promise(resolve => {
+    const cam = stage.camera, ctrl = stage.controls, saved = { pos: cam.position.clone(), target: ctrl.target.clone() };
+    const yaw = obj.userData.holder.rotation.y, fwd = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+    const tgt = obj.position.clone().setY(0.75), goal = tgt.clone().addScaledVector(fwd, 3.3).add(new THREE.Vector3(0.9, 1.0, 0));
+    const p0 = cam.position.clone(), t0 = ctrl.target.clone();
+    ctrl.enabled = false; banner('絕 殺', 1800);
+    const minD = ctrl.minDistance; ctrl.minDistance = 0.5;   // OrbitControls would otherwise clamp the close-up back out
+    timeline.play({ name: '英雄特寫', tracks: [{ at: 0, dur: 700, ease: t => 1 - Math.pow(1 - t, 3), fn: k => { cam.position.lerpVectors(p0, goal, k); ctrl.target.lerpVectors(t0, tgt, k); } }] });
+    setPose(obj, 'cheer');
+    const finish = e => {
+      e?.stopPropagation?.(); window.removeEventListener('pointerdown', finish, true); window.removeEventListener('keydown', finish, true);
+      const p1 = cam.position.clone(), t1 = ctrl.target.clone();
+      timeline.play({ name: '收尾', tracks: [{ at: 0, dur: 500, ease: t => t * t * (3 - 2 * t), fn: k => { cam.position.lerpVectors(p1, saved.pos, k); ctrl.target.lerpVectors(t1, saved.target, k); } }] }).then(() => { ctrl.minDistance = minD; ctrl.enabled = true; resolve(); });
+    };
+    setTimeout(() => { window.addEventListener('pointerdown', finish, true); window.addEventListener('keydown', finish, true); }, 500);
+    toast('點一下畫面收尾');
+  });
+}
+async function endGame() {
   const r = game.result;
   const winner = r.winner;
+  if (isV2() && settings.intensity === 'cinematic' && r.reason === '將死') {
+    const last = game.history[game.history.length - 1];
+    const hero = last && pieces[mTo(last.m)];
+    if (hero) { sfx.win(); await heroCloseup(hero); return showEndDialog(r, winner); }
+  }
   for (let i = 0; i < 90; i++) {
     const o = pieces[i]; if (!o) continue;
     if (winner && o.userData.side === winner) setPose(o, 'cheer');
@@ -423,13 +490,15 @@ function endGame() {
   if (winner === 0) { sfx.lose(); banner('和 棋', 2200); }
   else if (youWin === false) { sfx.lose(); banner(`${sideName(winner)}勝`, 2200); }
   else { sfx.win(); banner(r.reason === '將死' ? '絕 殺 !' : `${sideName(winner)}勝`, 2200); }
-  setTimeout(() => {
-    const title = winner === 0 ? '和棋' : youWin === null ? `${sideName(winner)}獲勝` : youWin ? '你贏了！' : '你輸了';
-    dialog(title, `${r.reason}。共 ${game.history.length} 步。`, [
-      { label: '再來一局', primary: true, fn: () => newGame(true) },
-      { label: '觀看棋盤', fn: () => {} },
-    ]);
-  }, 2300);
+  setTimeout(() => showEndDialog(r, winner), isV2() ? 1100 : 2300);
+}
+function showEndDialog(r, winner) {
+  const youWin = mode === 'local' ? null : winner === humanSide;
+  const title = winner === 0 ? '和棋' : youWin === null ? `${sideName(winner)}獲勝` : youWin ? '你贏了！' : '你輸了';
+  dialog(title, `${r.reason}。共 ${game.history.length} 步。`, [
+    { label: '再來一局', primary: true, fn: () => newGame(true) },
+    { label: '觀看棋盤', fn: () => {} },
+  ]);
 }
 
 /* ------------------------------ input: mouse + touch ------------------------------ */
@@ -437,7 +506,7 @@ const canvas = stage.renderer.domElement;
 let down = null, drag = null;
 function canControl(side) {
   if (busy || game.result || aiThinking) return false;
-  if (mode === 'solo' || mode === 'online') return side === humanSide && game.turn === humanSide;
+  if (mode === 'solo' || mode === 'online' || mode === 'demo') return side === humanSide && game.turn === humanSide;
   return mode === 'local' && side === game.turn;
 }
 function pieceAt(e) {
@@ -549,12 +618,15 @@ function startGame(newMode, opts = {}) {
   if (mode === 'solo') { humanSide = opts.side; level = opts.level; }
   if (mode === 'local') { humanSide = RED; autoFlip = opts.autoFlip; }
   if (mode === 'online') humanSide = opts.side;
+  if (mode === 'demo') humanSide = RED;
   stage.viewSide = 0; flipTo(humanSide);
   rebuildPieces();
   closeModal('#menu');
   $('#closeMenu').hidden = false;
-  sfx.ensure(); sfx.place();
-  banner('對 局 開 始', 1100);
+  sfx.ensure(); if (mode !== 'demo') { sfx.place(); banner('對 局 開 始', 1100); }
+  $('#lab').hidden = mode !== 'demo'; updateLab();
+  const newInset = mode === 'demo' ? 352 : 0;
+  if (stage.leftInset !== newInset) { stage.leftInset = newInset; stage.resize(); }
   maybeAI();
 }
 function newGame(fromDialog) {
@@ -564,6 +636,7 @@ function newGame(fromDialog) {
     return;
   }
   if (mode === 'menu') return openMenu();
+  if (mode === 'demo') return startGame('demo');
   startGame(mode, { side: mode === 'solo' ? humanSide : RED, level, autoFlip });
 }
 function undo() {
@@ -778,18 +851,101 @@ setIdleHook((kind, obj) => {
   }
 });
 
+/* ------------------------------ 改版原型對照面板 (lab) ------------------------------ */
+const DEMO_RED = (70 << 8) | 7;      // 炮二進七（炮越過黑砲吃黑馬）
+const DEMO_BLACK = (31 << 8) | 40;   // 卒５進１
+async function demoReply() {
+  if (mode !== 'demo' || game.result || game.turn !== BLACK || aiThinking) return;
+  aiThinking = true;
+  const n = game.history.length;
+  await new Promise(r => setTimeout(r, 420));
+  let m = 0;
+  if (n === 1 && game.history[0].m === DEMO_RED && game.isLegal(DEMO_BLACK)) m = DEMO_BLACK;
+  else { const res = await aiMove(); m = res.move; }
+  aiThinking = false;
+  if (mode === 'demo' && game.history.length === n && m) commitMove(m);
+}
+async function demoAuto() {
+  startGame('demo');
+  await new Promise(r => setTimeout(r, 650));
+  aiThinking = true;              // keep the scripted reply for after the red move finishes
+  await commitMove(DEMO_RED);
+  aiThinking = false;
+  demoReply();
+}
+const LAB_SLIDERS = [
+  ['cannonTotal', '炮吃馬整段', 400, 900, 10, 'ms'], ['crouch', '炮身壓低', 60, 200, 5, 'ms'], ['flight', '短弧飛行', 100, 320, 5, 'ms'],
+  ['stepTotal', '黑卒一步', 200, 360, 5, 'ms'], ['leanFrac', '重心前傾佔比', 0.1, 0.4, 0.01, ''],
+];
+function buildLab() {
+  const box = $('#labTune');
+  box.innerHTML = LAB_SLIDERS.map(([k, name, min, max, step, unit]) =>
+    `<label class="lab-slider"><span>${name}<b id="lv-${k}"></b></span><input type="range" id="ls-${k}" min="${min}" max="${max}" step="${step}"></label>`).join('') +
+    `<button class="ghost small" id="labTuneReset">恢復起始值</button>`;
+  LAB_SLIDERS.forEach(([k, , , , , unit]) => {
+    const el = $(`#ls-${k}`);
+    el.oninput = () => { settings.tune[k] = +el.value; $(`#lv-${k}`).textContent = ` ${unit ? el.value + ' ' + unit : Math.round(el.value * 100) + '%'}`; saveSettings(); };
+  });
+  $('#labTuneReset').onclick = () => { settings.tune = { ...TUNE_DEFAULTS }; saveSettings(); updateLab(); };
+  document.querySelectorAll('#labVer button').forEach(b => b.onclick = () => { settings.animVersion = b.dataset.v; saveSettings(); if (!busy) { rebuildPieces(); } updateLab(); });
+  document.querySelectorAll('#labInt button').forEach(b => b.onclick = () => { settings.intensity = b.dataset.i; saveSettings(); updateLab(); });
+  $('#labReset').onclick = () => startGame('demo');
+  $('#labAuto').onclick = () => demoAuto();
+  $('#labMin').onclick = () => $('#lab').classList.toggle('min');
+  $('#openLab').onclick = () => { closeModal('#menu'); startGame('demo'); };
+  if (window.matchMedia('(max-width: 820px)').matches) $('#lab').classList.add('min');
+}
+function updateLab() {
+  if (!$('#lab')) return;
+  document.querySelectorAll('#labVer button').forEach(b => b.classList.toggle('on', b.dataset.v === settings.animVersion));
+  document.querySelectorAll('#labInt button').forEach(b => { b.classList.toggle('on', b.dataset.i === settings.intensity); b.disabled = !isV2(); });
+  LAB_SLIDERS.forEach(([k, , , , , unit]) => { const el = $(`#ls-${k}`); if (!el) return; el.value = settings.tune[k]; el.disabled = !isV2(); $(`#lv-${k}`).textContent = ` ${unit ? settings.tune[k] + ' ' + unit : Math.round(settings.tune[k] * 100) + '%'}`; });
+  const n = game.history.length;
+  $('#labHint').textContent = mode !== 'demo' ? '' : n === 0 ? '點紅炮（右側），再點黑馬；黑方會回「卒５進１」。' : n === 1 ? '黑方應著中…' : n === 2 ? '兩步完成。可切換版本或強度後再試一次。' : '自由對弈中（黑方由電腦應對）。';
+}
+function updateLabStats() {
+  const el = $('#labStats'); if (!el || !timeline.log.length) return;
+  el.innerHTML = timeline.log.slice(0, 2).map(l => {
+    const av = l.av.filter(a => a.frame != null).map(a => {
+      const off = Math.round(a.frame + 8 - a.target);   // +8 ms ≈ half a 60 Hz frame until the picture is on screen
+      const ok = Math.abs(off) <= 50;
+      return `<span class="${ok ? 'ok' : 'bad'}">${{ impact: '命中', step: '腳步', place: '落盤', mech: '機括', drum: '鼓', hoof1: '前蹄', hoof2: '後蹄' }[a.name] || a.name} ${off >= 0 ? '+' : ''}${off}ms</span>`;
+    }).join(' ');
+    return `<div><b>${l.name}</b> 計畫 ${Math.round(l.planned)}ms・實際 ${Math.round(l.actual)}ms${av ? `<br><small>畫面對聲音：${av}</small>` : ''}</div>`;
+  }).join('') + `<small>目前畫面約 ${Math.round(loop.fps || 0)} fps${(loop.fps || 60) < 40 ? '（幀率偏低，偏差會跟著放大）' : ''}；偏差 ±50ms 內為綠色。</small>`;
+}
+buildLab();
+const intSel = $('#intensity');
+if (intSel) { intSel.value = settings.intensity; intSel.onchange = () => { settings.intensity = intSel.value; saveSettings(); updateLab(); }; }
+
 /* ------------------------------ main loop ------------------------------ */
 const clock = new THREE.Clock();
 let time = 0;
-function loop() {
-  const raw = Math.min(clock.getDelta(), 0.05);
+function advance(raw) {
   tw.update(raw);
   const dt = raw * tw.timeScale;
   time += dt;
+  timeline.update();
   fx.update(dt);
   for (const [o, st] of states) poseRig(o.userData.rig, st, time);
-  stage.render(raw, time);
+}
+function loop() {
+  const raw = Math.min(clock.getDelta(), 0.05);
+  if (!Clock.manual) {
+    loop.fps = (loop.fps || 60) * 0.95 + (raw > 0 ? 1 / raw : 60) * 0.05;
+    advance(raw);
+    stage.render(raw, time);
+    timeline.markFrame(performance.now());
+    if (timeline.log.length && timeline.log[0] !== loop._lastLog) { loop._lastLog = timeline.log[0]; setTimeout(updateLabStats, 60); }
+  }
   requestAnimationFrame(loop);
+}
+/** Frame-accurate stepping for captures: advance the shared clock by `ms` and draw exactly one frame. */
+function stepFrames(ms, sub = 16, draw = true) {
+  Clock.setManual(true);
+  let left = ms;
+  while (left > 0) { const d = Math.min(sub, left); Clock.t += d; advance(d / 1000); left -= d; }
+  if (draw) stage.render(0.016, time);
 }
 
 /* ------------------------------ boot ------------------------------ */
@@ -805,4 +961,5 @@ if (joinParam) {
   $('#joinCode').value = joinParam;
 }
 if (window.matchMedia('(min-width: 821px)').matches) $('#panel').classList.remove('collapsed');
-window.__xq = { game, stage, commitMove, settings, startGame, pieces: () => pieces }; // debug hook
+window.__xq = { game, stage, commitMove, settings, startGame, pieces: () => pieces, rebuild: () => rebuildPieces(), timeline, Clock, stepFrames, sfx, setVersion: v => { settings.animVersion = v; refreshMarkers(); updateLab(); } }; // debug hook
+if (new URLSearchParams(location.search).has('lab')) { closeModal('#menu'); startGame('demo'); }

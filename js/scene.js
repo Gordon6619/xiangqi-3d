@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from '../vendor/OrbitControls.js';
 import { RoomEnvironment } from '../vendor/RoomEnvironment.js';
+import { Clock } from './timeline.js';
 
 export const cellPos = (r, c, y = 0) => new THREE.Vector3(c - 4, y, r - 4.5);
 
@@ -201,11 +202,65 @@ export class Stage {
     }
   }
   showCheck(pos) {
+    if (this.landFrame?.userData.anim) { const k = Math.min(1, (Clock.now() - this.landFrame.userData.anim) / 140); this.landFrame.scale.setScalar(1.18 - 0.18 * (1 - Math.pow(1 - k, 3))); this.landFrame.material.opacity = 0.85 * k; if (k >= 1) this.landFrame.userData.anim = 0; }
+    if (this.seal) { // 印記浮出：rises, stamps down to size, then breathes
+      const k = Math.min(1, (Clock.now() - this.seal.userData.born) / 220);
+      this.seal.material.opacity = 0.95 * k; this.seal.scale.setScalar(1.35 - 0.35 * (1 - Math.pow(1 - k, 3)) + (k >= 1 ? Math.sin(time * 4) * 0.03 : 0));
+      this.seal.position.y = 0.018 + 0.05 * (1 - k);
+    }
     if (this.checkRing) { this.scene.remove(this.checkRing); this.checkRing = null; }
     if (!pos) return;
     const m = new THREE.Mesh(this.ringGeo, this.checkMat); m.rotation.x = Math.PI / 2; m.position.copy(pos); m.position.y = 0.06;
     this.checkRing = m; this.scene.add(m);
   }
+
+  /* ---------- 改版標記：炮架光圈、落地細框、將軍印記 ---------- */
+  makeBaseGlow(pos) {
+    const g = new THREE.Group();
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.3, 0.42, 48), new THREE.MeshBasicMaterial({ color: 0xffd36b, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(0.3, 48), new THREE.MeshBasicMaterial({ color: 0xffb030, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+    [ring, disc].forEach(m => { m.rotation.x = -Math.PI / 2; g.add(m); });
+    g.position.set(pos.x, 0.02, pos.z); g.renderOrder = 3;
+    // a single opacity drives both layers
+    const mat = { set opacity(v) { ring.material.opacity = v; disc.material.opacity = v * 0.45; }, get opacity() { return ring.material.opacity; } };
+    g.material = mat;
+    this.scene.add(g);
+    return g;
+  }
+  removeBaseGlow(g) { this.scene.remove(g); g.children.forEach(m => { m.geometry.dispose(); m.material.dispose(); }); }
+  setLandFrame(r, c, animate = false) {
+    if (!this.landFrame) {
+      const shape = new THREE.Shape(), o = 0.47, i = 0.445;
+      shape.moveTo(-o, -o); shape.lineTo(o, -o); shape.lineTo(o, o); shape.lineTo(-o, o); shape.lineTo(-o, -o);
+      const hole = new THREE.Path(); hole.moveTo(-i, -i); hole.lineTo(-i, i); hole.lineTo(i, i); hole.lineTo(i, -i); hole.lineTo(-i, -i);
+      shape.holes.push(hole);
+      this.landFrame = new THREE.Mesh(new THREE.ShapeGeometry(shape), new THREE.MeshBasicMaterial({ color: 0xfff1c8, transparent: true, opacity: 0.85, depthWrite: false }));
+      this.landFrame.rotation.x = -Math.PI / 2; this.landFrame.renderOrder = 2;
+      this.scene.add(this.landFrame);
+    }
+    if (r == null) { this.landFrame.visible = false; return; }
+    this.landFrame.visible = true;
+    this.landFrame.position.copy(cellPos(r, c, 0.016));
+    this.landFrame.userData.anim = animate ? Clock.now() : 0;
+  }
+  showSeal(pos, side) {
+    this.clearSeal();
+    if (!pos) return;
+    const cv = document.createElement('canvas'); cv.width = cv.height = 256;
+    const g = cv.getContext('2d');
+    g.fillStyle = 'rgba(190,24,24,0.92)';
+    g.beginPath(); g.roundRect(28, 28, 200, 200, 26); g.fill();
+    g.strokeStyle = 'rgba(255,236,220,0.9)'; g.lineWidth = 8; g.beginPath(); g.roundRect(44, 44, 168, 168, 16); g.stroke();
+    g.fillStyle = '#fff3e6'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = 'bold 76px "BiauKai","DFKai-SB","KaiTi","STKaiti","Noto Serif TC","Noto Serif CJK TC","WenQuanYi Zen Hei",serif';
+    g.fillText('將', 128, 92); g.fillText('軍', 128, 168);
+    const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(0.94, 0.94), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2; m.rotation.z = side > 0 ? 0 : Math.PI; m.position.set(pos.x, 0.018, pos.z); m.renderOrder = 2;
+    m.userData.born = Clock.now();
+    this.seal = m; this.scene.add(m);
+  }
+  clearSeal() { if (this.seal) { this.scene.remove(this.seal); this.seal.material.map.dispose(); this.seal.material.dispose(); this.seal.geometry.dispose(); this.seal = null; } }
 
   /* camera framing that keeps the whole board visible on any aspect ratio */
   fitCamera(animate = false) {
@@ -214,9 +269,10 @@ export class Stage {
     const portrait = aspect < 0.9;
     this.camera.fov = portrait ? 50 : 40;
     // keep the board centred in the area not covered by the desktop side panel
-    const inset = w > 820 && h > 520 ? 290 : 0;
-    if (inset) this.camera.setViewOffset(w, h, inset / 2, 0, w, h); else this.camera.clearViewOffset();
-    const effW = w - inset;
+    const wide = w > 820 && h > 520;
+    const right = wide ? 290 : 0, left = wide ? (this.leftInset || 0) : 0;   // side panels covering the canvas
+    if (right || left) this.camera.setViewOffset(w, h, (right - left) / 2, 0, w, h); else this.camera.clearViewOffset();
+    const effW = w - right - left;
     this.camera.updateProjectionMatrix();
     const polar = portrait ? 0.38 : 0.62;               // more top-down on phones
     const vfov = THREE.MathUtils.degToRad(this.camera.fov);
@@ -259,6 +315,12 @@ export class Stage {
       if (m.userData.sel) m.scale.setScalar(1 + Math.sin(time * 6) * 0.05);
       else m.scale.setScalar(1 + Math.sin(time * 5 + m.userData.pulse) * 0.12);
     });
+    if (this.landFrame?.userData.anim) { const k = Math.min(1, (Clock.now() - this.landFrame.userData.anim) / 140); this.landFrame.scale.setScalar(1.18 - 0.18 * (1 - Math.pow(1 - k, 3))); this.landFrame.material.opacity = 0.85 * k; if (k >= 1) this.landFrame.userData.anim = 0; }
+    if (this.seal) { // 印記浮出：rises, stamps down to size, then breathes
+      const k = Math.min(1, (Clock.now() - this.seal.userData.born) / 220);
+      this.seal.material.opacity = 0.95 * k; this.seal.scale.setScalar(1.35 - 0.35 * (1 - Math.pow(1 - k, 3)) + (k >= 1 ? Math.sin(time * 4) * 0.03 : 0));
+      this.seal.position.y = 0.018 + 0.05 * (1 - k);
+    }
     if (this.checkRing) { this.checkRing.scale.setScalar(1 + Math.sin(time * 10) * 0.1); this.checkRing.material.color.setHSL(0, 1, 0.45 + Math.sin(time * 10) * 0.1); }
     this.controls.update();
     let off = null;

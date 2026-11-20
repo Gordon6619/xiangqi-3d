@@ -250,9 +250,13 @@ function biped(o) {
   if (o.armor) {
     const plate = mesh(cap(0.13, 0.12), armorMat, 0, 0.19, 0.01, chest); plate.scale.set(1.04, 1, 0.8);
     mesh(sph(0.04, 14, 10), metal, 0, 0.2, 0.11, chest).scale.set(1, 1, 0.4); // 護心鏡
-    [-1, 1].forEach(s => { const pad = mesh(sph(0.075, 16, 10), armorMat, s * 0.15, 0.29, 0, chest); pad.scale.set(1, 0.6, 1); });
+    rig.pauldrons = [-1, 1].map(s => { const pv = pivot(chest, s * 0.13, 0.31, 0); const pad = mesh(sph(0.075, 16, 10), armorMat, s * 0.02, -0.02, 0, pv); pad.scale.set(1, 0.6, 1); return pv; });
     mesh(new THREE.CylinderGeometry(0.13, 0.17, 0.12, 20, 1, true), armorMat, 0, -0.03, 0, chest);
     frontZ = 0.118;
+  }
+  if (o.pauldrons && !o.armor) { // leather shoulder guards 皮肩甲 that settle after each step
+    const lm = M.std(0x4a2e1a, { r: 0.55, extra: { bumpMap: scaleBump(), bumpScale: 0.4 } });
+    rig.pauldrons = [-1, 1].map(s => { const pv = pivot(chest, s * 0.13, 0.31, 0); const pad = mesh(sph(0.07, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.6), lm, s * 0.025, -0.025, 0, pv); pad.scale.set(1, 0.8, 1.05); return pv; });
   }
   if (o.emblem) { // 棋字 on chest and back so it reads from either side of the board
     const ey = o.armor ? 0.15 : 0.16;
@@ -649,7 +653,7 @@ function buildFigure(model, pal, side, ch) {
     case 'cannon': return cannonModel(base);
     case 'catapult': return catapultModel(base);
     case 'spearman': return biped({ ...base, role: 'spearman', armor: true, helmet: 'cap', weapon: 'spear', shield: 'round' });
-    case 'swordsman': return biped({ ...base, role: 'swordsman', helmet: 'cap', weapon: 'dao', shield: 'tower' });
+    case 'swordsman': return biped({ ...base, role: 'swordsman', helmet: 'cap', weapon: 'dao', shield: 'tower', pauldrons: true });
     case 'archer': return biped({ ...base, role: 'archer', helmet: 'band', weapon: 'bow' });
     default: return null;
   }

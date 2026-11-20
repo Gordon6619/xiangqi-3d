@@ -242,12 +242,14 @@ function poseBiped(r, st, br, time) {
   } else if (mode === 'guard') {
     if (!twoHanded) { P.a0 = -1.0; P.f0 = -1.2; P.a1 = -0.9; P.f1 = -0.9; P.weapX = 1.2; }
     P.chestX = 0.1; P.l0 = 0.2; P.l1 = -0.15; P.headX = -0.05;
+  } else if (mode === 'hold') { // choreography in control: rest stance, no idle behaviour
   } else { // idle — breathing sway + role behaviour
     P.headY += Math.sin(time * 0.37 + r.seed) * 0.12;
     P.chestZ += Math.sin(time * 0.5 + r.seed) * 0.015;
     const act = scheduler(r, time, BIPED_IDLE[r.role] || [['look', 3], ['shift', 2.4]]);
     if (act) applyBipedIdle(P, act, r);
   }
+  if (st.add) for (const k in st.add) if (k in P) P[k] += st.add[k];   // choreography offsets (lean, crouch…)
   if (r.seated) { P.hipsY = 0.36; P.l0 = -1.25; P.l1 = -1.25; P.l0z = -0.42; P.l1z = 0.42; P.k0 = P.k1 = 1.15; P.hipsZ = 0; }
   const [L, Rl] = r.legs, [LA, RA] = r.arms;
   r.hips.position.y = P.hipsY + br * 0.004;
@@ -266,6 +268,13 @@ function poseBiped(r, st, br, time) {
   if (r.cape) r.cape.rotation.x = 0.15 + (mode === 'walk' || mode === 'gallop' ? 0.45 : 0) + Math.sin(time * 3 + r.seed) * 0.05 + (mode === 'strike' ? 0.6 * a : 0) + r.capeBoost * (0.5 + Math.sin(time * 9) * 0.25);
   if (r.plume) r.plume.rotation.x = Math.sin(time * 4 + r.seed) * 0.08 + (mode === 'walk' ? 0.2 : 0);
   if (r.flag) r.flag.rotation.y = Math.sin(time * 3 + r.seed) * 0.35 + r.flagBoost * Math.sin(time * 14) * 0.6;
+  if (r.pauldrons) { // damped spring: kicked on foot contact, settles in ~0.3 s
+    const sp = r.pSpring ??= { x: 0, v: 0, t: time };
+    const dt = Math.min(0.05, Math.max(0, time - sp.t)); sp.t = time;
+    if (st.kick) { sp.v += st.kick; st.kick = 0; }
+    for (let n = 0; n < 4; n++) { const h = dt / 4; sp.v += (-420 * sp.x - 16 * sp.v) * h; sp.x += sp.v * h; }
+    r.pauldrons.forEach((pv, i) => { pv.rotation.x = sp.x; pv.rotation.z = (i ? -1 : 1) * sp.x * 0.6; pv.position.y = 0.31 + sp.x * 0.02; });
+  }
   if (r.wings) r.wings.rotation.z = Math.sin(time * 3 + r.seed) * 0.02 + r.wingWobble * Math.sin(time * 18) * 0.06;
 }
 
@@ -306,12 +315,15 @@ function poseQuad(r, st, br, time) {
     P.bodyX = 0.5 * a; P.neckX = 0.8 * a; P.legs = P.legs.map((_, i) => [(i % 2 ? 1 : -1) * 0.8 * a, 0.5 * a]);
   } else if (mode === 'guard') {
     P.neckX = -0.15; P.headY = 0; P.earL = P.earR = -0.4; P.trunk = -0.3; P.earFlap = 0.5;
+  } else if (mode === 'hold') {
   } else {
     // idle: continuous natural motion
     if (elephant) { P.bodyZ = Math.sin(time * 0.7 + r.seed) * 0.02; P.earFlap = 0.15; }
     const act = scheduler(r, time, QUAD_IDLE[r.role] || QUAD_IDLE.horse);
     if (act) applyQuadIdle(P, act, r, time);
   }
+  if (st.add) { for (const k in st.add) if (k in P && typeof P[k] === 'number') P[k] += st.add[k];
+    if (st.add.legs) st.add.legs.forEach((l, i) => { if (l) { P.legs[i][0] += l[0]; P.legs[i][1] += l[1]; } }); }
   // apply
   r.body.position.y = P.bodyY + br * 0.003;
   r.body.rotation.set(P.bodyX, 0, P.bodyZ);
@@ -386,10 +398,12 @@ function poseCannon(r, st, time) {
     if (act?.name === 'smoke' && act.once('s')) idleHook('smoke', r.fuse, r);
     if (act && (act.name === 'aim' || act.name === 'traverse') && act.once('c')) idleHook('sound:creak', r.root, r);
   }
-  r.barrel.position.z = -recoil; r.barrel.rotation.x = pitch; r.body.rotation.y = yaw;
-  r.body.position.y = 0.12 + (mode === 'strike' ? Math.sin(a * Math.PI) * 0.03 : 0);
+  const ad = st.add || {};
+  r.barrel.position.z = -recoil - (ad.recoil || 0); r.barrel.rotation.x = pitch + (ad.pitch || 0); r.body.rotation.y = yaw;
+  r.body.position.y = 0.12 + (mode === 'strike' ? Math.sin(a * Math.PI) * 0.03 : 0) + (ad.bodyY || 0);
+  r.body.rotation.x = ad.bodyX || 0;
   if (r.flag) r.flag.rotation.y = Math.sin(time * 3 + r.seed) * 0.3;
-  poseRig(r.crew, { mode: mode === 'strike' ? 'guard' : mode === 'walk' ? 'walk' : mode === 'cheer' ? 'cheer' : mode === 'idle' ? 'idle' : 'guard', walk: w, act: a, speed: st.speed, amp: st.amp }, time);
+  poseRig(r.crew, { mode: mode === 'strike' ? 'guard' : mode === 'walk' ? 'walk' : mode === 'cheer' ? 'cheer' : mode === 'idle' ? 'idle' : mode === 'hold' ? 'hold' : 'guard', walk: w, act: a, speed: st.speed, amp: st.amp }, time);
 }
 function poseCatapult(r, st, time) {
   const mode = st.mode, w = st.walk || 0, a = st.act || 0;
@@ -404,7 +418,9 @@ function poseCatapult(r, st, time) {
     if (act?.name === 'test') arm -= 0.35 * Math.sin(act.p * Math.PI);
     if (act && act.once('c')) idleHook('sound:creak', r.root, r);
   }
-  r.arm.rotation.x = arm;
+  const ad = st.add || {};
+  r.arm.rotation.x = arm + (ad.arm || 0);
+  r.body.position.y = 0.1 + (ad.bodyY || 0); r.body.rotation.x = ad.bodyX || 0;
   r.stone.visible = !(mode === 'strike' && a > 0.25) && !r.stoneFired;
   if (mode === 'idle') r.stoneFired = false;
   if (r.flag) r.flag.rotation.y = Math.sin(time * 3 + r.seed) * 0.3;

@@ -10,7 +10,15 @@ export class SFX {
     if (!this.ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return null;
-      this.ctx = new AC();
+      this.attach(new AC({ latencyHint: 'interactive' }));
+    }
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+    return this.ctx;
+  }
+  /** Build the mixing graph on a context (a live AudioContext, or an OfflineAudioContext for tests). */
+  attach(ctx) {
+    {
+      this.ctx = ctx;
       this.master = this.ctx.createGain();
       this.master.gain.value = this.volume;
       // gentle room reverb
@@ -22,12 +30,13 @@ export class SFX {
       this.master.connect(this.comp);
       this.master.connect(this.reverb); this.reverb.connect(this.revGain); this.revGain.connect(this.comp);
       this.comp.connect(this.ctx.destination);
+      this.dry = this.ctx.createGain(); this.dry.gain.value = this.volume; this.dry.connect(this.comp); // no reverb send
       this._noise = this._noiseBuf(2);
+      this._last = {};
     }
-    if (this.ctx.state === 'suspended') this.ctx.resume();
     return this.ctx;
   }
-  setVolume(v) { this.volume = v; if (this.master) this.master.gain.value = v; }
+  setVolume(v) { this.volume = v; if (this.master) this.master.gain.value = v; if (this.dry) this.dry.gain.value = v; }
 
   _impulse(sec, decay) {
     const c = this.ctx, len = c.sampleRate * sec, buf = c.createBuffer(2, len, c.sampleRate);
@@ -67,15 +76,15 @@ export class SFX {
     o.start(T); o.stop(T + a + dur + 0.05);
     return o;
   }
-  noise({ t = 0, dur = 0.2, a = 0.003, vol = 0.4, type = 'bandpass', f = 1000, f2 = null, q = 1, pan = 0, rate = 1 }) {
+  noise({ t = 0, dur = 0.2, a = 0.003, vol = 0.4, type = 'bandpass', f = 1000, f2 = null, q = 1, pan = 0, rate = 1, dest = null }) {
     const c = this.ctx, T = this.now + t;
     const s = c.createBufferSource(); s.buffer = this._noise; s.playbackRate.value = rate;
     const fl = c.createBiquadFilter(); fl.type = type; fl.frequency.setValueAtTime(f, T); fl.Q.value = q;
     if (f2) fl.frequency.exponentialRampToValueAtTime(f2, T + dur);
     const g = c.createGain(); this.env(g, T, a, vol, dur);
     s.connect(fl); fl.connect(g);
-    if (c.createStereoPanner) { const p = c.createStereoPanner(); p.pan.value = pan; g.connect(p); p.connect(this.master); }
-    else g.connect(this.master);
+    if (c.createStereoPanner) { const p = c.createStereoPanner(); p.pan.value = pan; g.connect(p); p.connect(dest || this.master); }
+    else g.connect(dest || this.master);
     s.start(T, Math.random() * 1.5); s.stop(T + a + dur + 0.05);
   }
   metal({ t = 0, f = 900, vol = 0.25, dur = 0.6 }) {
@@ -97,6 +106,89 @@ export class SFX {
     this.tone({ t, type: 'sine', f: 120 * pitch, f2: 60, dur: 0.08, vol: vol * 0.6 });
     if (armor) this.metal({ t: t + 0.01, f: 1800 + Math.random() * 400, vol: vol * 0.25, dur: 0.18 });
   }
+
+  // ================= 改版音效：綁在動畫事件上的短音 (event-bound cues) =================
+  // Each cue has 3 variants; the same variant never plays twice in a row.
+  // `perfTarget` is the performance.now() moment the matching picture appears; output latency is subtracted
+  // so the sound reaches the speaker on that frame.
+  offsetFor(perfTarget) {
+    const c = this.ctx;
+    if (perfTarget == null || typeof perfTarget !== 'number') return 0;
+    if (c.getOutputTimestamp) {
+      const ts = c.getOutputTimestamp();
+      if (ts && ts.performanceTime > 0) return Math.max(0, ts.contextTime + (perfTarget - ts.performanceTime) / 1000 - c.currentTime);
+    }
+    const lat = (c.outputLatency || 0) + (c.baseLatency || 0);
+    return Math.max(0, (perfTarget - performance.now()) / 1000 - lat);
+  }
+  pick(name, n = 3) {
+    const last = this._last[name];
+    let i; do { i = Math.floor(Math.random() * n); } while (n > 1 && i === last);
+    this._last[name] = i;
+    return i;
+  }
+  /** Play an event cue. `at` = performance.now() target (live) or seconds offset when `rawT` is set (offline tests). */
+  cue(name, at = null, { rawT = false, variant = null } = {}) {
+    if (!this.ctx && !this.ensure()) return;
+    if (!this.enabled) return;
+    const t = rawT ? at : this.offsetFor(at);
+    const v = variant ?? this.pick(name);
+    const fn = this['cue_' + name];
+    if (fn) fn.call(this, t, v);
+    return { t, v };
+  }
+  // 炮身壓低：短機括 — a latch click + short ratchet, bright enough for phone speakers
+  cue_mech(t, v) {
+    const P = [{ f: 2400, r: 3, c: 320 }, { f: 2100, r: 2, c: 290 }, { f: 2750, r: 3, c: 350 }][v];
+    this.noise({ t, dur: 0.012, a: 0.001, vol: 1.0, type: 'bandpass', f: P.f, q: 6, dest: this.dry });
+    this.tone({ t: t + 0.004, type: 'triangle', f: P.c * 1.6, f2: P.c, dur: 0.05, vol: 0.4, a: 0.001, dest: this.dry });
+    for (let j = 0; j < P.r; j++) this.noise({ t: t + 0.022 + j * 0.021, dur: 0.008, a: 0.001, vol: 0.42, type: 'bandpass', f: P.f * 0.8, q: 8, dest: this.dry });
+  }
+  // 命中：厚實的撞擊 — sub body + 400–500 Hz knock (what a phone speaker reproduces) + 2 kHz crack
+  cue_impact(t, v) {
+    const P = [{ b: 150, m: 470, c: 2200 }, { b: 135, m: 430, c: 1900 }, { b: 165, m: 520, c: 2500 }][v];
+    this.tone({ t, type: 'sine', f: P.b * 1.5, f2: P.b * 0.5, dur: 0.24, vol: 0.9, a: 0.001 });
+    this.tone({ t, type: 'triangle', f: P.m, f2: P.m * 0.6, dur: 0.1, vol: 0.5, a: 0.001 });
+    this.noise({ t, dur: 0.05, a: 0.001, vol: 0.65, type: 'bandpass', f: P.c, q: 1.2 });
+    this.noise({ t, dur: 0.2, a: 0.002, vol: 0.45, type: 'lowpass', f: 1100, f2: 180 });
+    this.wood({ t: t + 0.09, f: 1100 + v * 120, vol: 0.12 });
+  }
+  // 占格：較輕的木質落盤
+  cue_place(t, v) {
+    const f = [880, 780, 960][v];
+    this.tone({ t, type: 'triangle', f, f2: f * 0.74, dur: 0.06, vol: 0.34, a: 0.001, dest: this.dry });
+    this.tone({ t, type: 'sine', f: f * 2.4, dur: 0.03, vol: 0.12, a: 0.001, dest: this.dry });
+    this.noise({ t, dur: 0.02, a: 0.001, vol: 0.22, type: 'bandpass', f: f * 2.2, q: 4, dest: this.dry });
+  }
+  // 普通步：一聲乾淨的腳步 — dry, short, duller than the wooden placement
+  cue_step(t, v) {
+    const P = [{ f: 1100, p: 120 }, { f: 950, p: 105 }, { f: 1250, p: 135 }][v];
+    this.noise({ t, dur: 0.055, a: 0.002, vol: 0.8, type: 'lowpass', f: P.f, f2: P.f * 0.4, dest: this.dry });
+    this.noise({ t, dur: 0.03, a: 0.001, vol: 0.32, type: 'bandpass', f: P.f * 1.5, q: 1.4, dest: this.dry }); // scuff: carries on phone speakers
+    this.tone({ t, type: 'sine', f: P.p, f2: P.p * 0.6, dur: 0.05, vol: 0.5, a: 0.002, dest: this.dry });
+    this.noise({ t: t + 0.004, dur: 0.012, a: 0.001, vol: 0.15, type: 'highpass', f: 2500, dest: this.dry });
+  }
+  // 將軍：一記短鼓
+  cue_drum(t, v) {
+    const f = [150, 138, 162][v];
+    this.tone({ t, type: 'sine', f: f * 1.6, f2: f, dur: 0.2, vol: 0.62, a: 0.001 });
+    this.tone({ t, type: 'triangle', f: f * 2.2, f2: f * 1.5, dur: 0.05, vol: 0.18, a: 0.001 });
+    this.noise({ t, dur: 0.06, a: 0.001, vol: 0.3, type: 'bandpass', f: 380, q: 1 });
+  }
+  // 馬蹄（前後蹄兩拍各一聲）
+  cue_hoof(t, v) {
+    const f = [520, 470, 565][v];
+    this.wood({ t, f, vol: 0.3 });
+    this.noise({ t, dur: 0.04, a: 0.001, vol: 0.12, type: 'lowpass', f: 700, dest: this.dry });
+  }
+  // 車輪滾動 + 煞停
+  cue_roll(t, v) {
+    const d = [0.22, 0.26, 0.2][v];
+    this.noise({ t, dur: d, a: 0.03, vol: 0.28, type: 'lowpass', f: 260, q: 3 });
+    for (let i = 0; i < 4; i++) this.wood({ t: t + i * d / 4, f: 320 + v * 30 + i * 15, vol: 0.06 });
+  }
+  cue_brake(t, v) { this.noise({ t, dur: 0.14, a: 0.005, vol: 0.13, type: 'bandpass', f: [1400, 1250, 1550][v], f2: 600, q: 2 }); }
+  cue_stomp(t, v) { this.thud({ t, f: [60, 55, 66][v], vol: 0.45, dur: 0.3 }); }
 
   // ---------- UI ----------
   select() { if (!this.ensure() || !this.enabled) return; this.wood({ f: 1500, vol: 0.35 }); }
