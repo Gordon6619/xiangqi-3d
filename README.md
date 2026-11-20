@@ -1,60 +1,65 @@
-# 楚漢 3D 象棋 (Xiangqi 3D)
+# 楚漢 3D 象棋
 
-**Play now: https://gordon6619.github.io/xiangqi-3d/**
+**立即遊玩：https://gordon6619.github.io/xiangqi-3d/**
 
-The site is served by GitHub Pages from the `gh-pages` branch. After changing `main`, publish with `git push origin main:gh-pages`.
+網站由 GitHub Pages 從 `gh-pages` 分支發佈。修改 `main` 後，執行 `git push origin main:gh-pages` 即可更新網站。
 
-A 3D Chinese chess game that runs in the browser. Everything it needs is in this folder: no build step, no CDN, no audio files.
+一款在瀏覽器裡執行的 3D 中國象棋。需要的東西都在這個資料夾裡：不需要建置步驟、不依賴 CDN、也沒有任何音檔。
 
-## Run it
+## 執行方式
 
 ```bash
-node server.mjs          # or: npm start
+node server.mjs          # 或：npm start
 ```
 
-Then open http://localhost:8080. Any static web server works too (for example `python3 -m http.server`). Don't open `index.html` straight from disk with `file://`, because ES modules and Web Workers won't load that way.
+然後開啟 http://localhost:8080。任何靜態網頁伺服器都可以（例如 `python3 -m http.server`）。請不要直接用 `file://` 開啟 `index.html`，ES 模組和背景執行緒在這種方式下無法載入。
 
-## Features
+## 功能
 
-| Requirement | How it's done |
+| 需求 | 實作方式 |
 |---|---|
-| Single player | Alpha-beta AI with iterative deepening, quiescence search, MVV-LVA, killer moves and history ordering. Runs in a Web Worker, so the page doesn't freeze while it thinks. Four levels: 入門 / 業餘 / 高手 / 大師 |
-| Online play | Peer-to-peer WebRTC through PeerJS. The host gets a 6-character room code or an invite link (`?join=CODE`). Moves are checked on both ends. Supports undo requests, resign, new-game requests and resyncing after a desync. Each player's custom army shows on both screens |
-| Same-device two player | Pass-and-play. The view flips automatically each turn |
-| Mouse and touch | Tap to select then tap to move, or drag and drop. One finger rotates the camera, two fingers pinch to zoom. Keyboard: Esc deselects, U undoes, F flips the view |
-| Responsive layout | The camera refits to the screen's aspect ratio. Phones get a bottom drawer, desktops get a side panel. Handles notches and safe areas |
-| 3D graphics | three.js with PBR materials (clearcoat lacquer, metal armour, fur bump maps, sheen on fabric), ACES tone mapping, soft shadows and environment lighting |
-| Figures follow each character's literal meaning | 帥/將 marshal, 仕 court official with a scroll, 士 strategist with a feather fan, 相 chancellor with a court tablet, 象 war elephant with a mahout, 傌/馬 cavalryman on horseback, 俥 chariot with a standing warrior, 車 horse-drawn chariot, 炮 bronze gunpowder cannon, 砲 stone-throwing catapult, 兵 spearman, 卒 sword-and-shield infantry. No bases: each piece's character is on the figure itself (chest and back, animal flanks, vehicle front and back, banners). Each side can pick between variants that keep the meaning (weapon, horse colour, elephant type) and choose from 3 colour schemes |
-| Lifelike poses | Every figure has a skeleton (hips, knees, arms, head, neck, tail, trunk, ears, wheels). While standing, each one breathes, blinks, shifts its weight and plays random actions suited to its role: the marshal inspects his sword and points out orders, the strategist fans himself and strokes his beard, the chancellor bows, soldiers drill with spears and practise sword swings, horses swish their tails, paw the ground and graze, elephants flap their ears, curl and raise their trunks and stomp, the cannon crew wipes the barrel and adjusts the aim, the catapult loader lifts stones. Walking uses a real gait (knee flex, body bob, hip sway, arm swing) with steps matched to the distance travelled, steps on the spot while turning, curved paths for horses, and smooth starts and stops |
-| Separate sound for each piece | 帥將: armoured steps and war drum. 仕士: silk rustle and jade chimes. 相象: elephant trumpet and heavy stomps. 傌馬: four-beat hoofbeats and a whinny. 俥車: rolling wheels. 炮砲: creaking wheels and a bronze ring. 兵卒: marching steps |
-| Captures with impact | A cinematic close-up, then slow motion. The attacker winds up (with a rising tension sound), then strikes (impact, metal clash, debris bouncing). Cannons fire a cannonball over the screen piece and it explodes. The captured piece gets knocked away and lands in the graveyard beside the board. Sparks, wood chips, smoke, a light flash and camera shake. Check plays a gong |
-| Official rules | Palace, river, blocked horse leg (蹩馬腿), blocked elephant eye (塞象眼), cannon screen, flying general (將帥照面), no move to leave yourself in check. A side with no legal moves loses (checkmate or stalemate). Perpetual check loses (長將判負), threefold repetition is a draw, 60 moves without a capture is a draw, and so is a position where neither side has attacking pieces. Moves are recorded in Chinese notation (前/後/中) |
+| 單人模式 | α-β 剪枝搜尋的電腦對手（逐步加深、靜態搜尋、MVV-LVA 吃子排序、殺手著法與歷史啟發），在背景執行緒運算，思考時畫面不會卡住。四種難度：入門／業餘／高手／大師 |
+| 線上對戰 | 透過 PeerJS 建立 WebRTC 點對點連線。房主取得 6 碼房間代碼或邀請連結（`?join=代碼`）。雙方都會驗證著法，支援悔棋請求、認輸、新局請求與不同步時的自動校正。雙方的自訂造型會同時顯示在兩邊畫面 |
+| 雙人同機 | 輪流在同一台裝置上下棋，每步自動翻轉視角 |
+| 滑鼠與觸控 | 點選後再點目的地，或直接拖放。單指旋轉鏡頭、雙指縮放。鍵盤：Esc 取消選取、U 悔棋、F 翻轉視角 |
+| 響應式版面 | 鏡頭依螢幕比例重新取景。手機使用底部抽屜，桌機使用側欄，並處理瀏海與安全區域 |
+| 3D 畫面 | three.js 搭配 PBR 材質（亮漆、金屬甲冑、毛皮凹凸貼圖、布料光澤）、ACES 色調映射、柔和陰影與環境光 |
+| 依棋字本義塑造 | 帥／將：元帥；仕：手捧奏卷的文官；士：羽扇綸巾的謀士；相：執笏的宰相；象：背負象轎的戰象；傌／馬：騎兵；俥：武士立乘的戰車；車：馬拉戰車；炮：銅火砲；砲：投石機；兵：長槍兵；卒：刀盾步卒。棋子不帶底座，棋字直接印在人物或器物身上（胸前與背後、動物兩側、車砲前後、旗幟）。每一方都能在符合字義的造型中挑選（兵器、馬色、象的種類），並有 3 種配色 |
+| 寫實比例 | 人物約七頭身、在棋盤上約 1.1 格高；騎兵、砲手、車夫等乘員換算成相同的實際身高，人、馬、車、砲彼此比例一致 |
+| 擬真動作 | 每個角色都有骨架（髖、膝、手臂、頭、頸、尾、象鼻、耳、車輪）。站立時會呼吸、眨眼、換重心，並隨機做符合身分的動作：元帥舉劍端詳、指揮下令；謀士搖扇撫鬚；宰相作揖；士兵操練刺槍、揮刀；馬甩尾、刨地、吃草；象搧耳、捲鼻、跺腳；砲手擦砲管、調整仰角；裝填手搬石頭 |
+| 動作編排 | 對照面板可切換三個版本：改版前、第一版（快節奏、全盤構圖）、第二版（真人多步行走、駿馬慢速奔馳、電影跟拍與慢動作）。另有快速／標準／電影三種演出強度 |
+| 音效 | 所有聲音即時合成。改版後的聲音綁在動畫事件上：機括、撞擊、落盤、腳步、短鼓、馬蹄，各有三個變體且不連續重複 |
+| 官方規則 | 九宮、河界、蹩馬腿、塞象眼、炮架、將帥照面、不可送將。無子可動即負（含將死與困斃）。長將判負、三次重複局面判和、六十回合未吃子判和、雙方皆無進攻子力判和。以中文記譜（含前／中／後） |
 
-The move generator passes perft for the starting position: depth 1 = 44, depth 2 = 1,920, depth 3 = 79,666, which match the known values.
+走子產生器通過起始局面的 perft 驗證：深度 1 = 44、深度 2 = 1,920、深度 3 = 79,666，與已知數值相符。
 
-## Online play: how it connects
+## 線上對戰的連線方式
 
-By default it uses the free public PeerJS signalling server, `0.peerjs.com`. After the two players are connected, moves travel directly between them. To run your own signalling server:
+預設使用免費的公共 PeerJS 牽線伺服器 `0.peerjs.com`。雙方連上之後，著法直接在兩台裝置之間傳送。如果要自架牽線伺服器：
 
 ```bash
 npx peer --port 9000
 ```
 
-Then open the game with `?peerHost=your.host&peerPort=9000&peerSecure=0` (use `peerSecure=1` if the server uses HTTPS).
-Some strict corporate or mobile-carrier networks block direct WebRTC connections. If that happens, you need to add a TURN server.
+然後用 `?peerHost=你的主機&peerPort=9000&peerSecure=0` 開啟遊戲（伺服器使用 HTTPS 時改成 `peerSecure=1`）。
+部分管制嚴格的公司網路或電信網路會擋下 WebRTC 直連，遇到這種情況需要另外加設 TURN 中繼伺服器。
 
-## File layout
+## 檔案結構
 
 ```
-index.html            UI layout
-css/style.css         responsive styles
-js/rules.js           rules engine, game-end checks, Chinese notation
-js/ai.js, ai-worker.js  AI search
-js/models.js          procedural rigged characters, animals, discs, palettes, themes
-js/anim.js            pose animation, tweens, particles
-js/scene.js           renderer, lighting, board textures, camera fitting, picking
-js/audio.js           WebAudio sound synthesis (all sounds generated live)
-js/net.js             WebRTC online play
-js/main.js            game controller: input, capture choreography, UI
-vendor/               three.js r170 and PeerJS 1.5.4, bundled locally
+index.html              介面版面
+css/style.css           響應式樣式
+js/rules.js             規則引擎、勝負判定、中文記譜
+js/ai.js、ai-worker.js  電腦對手搜尋
+js/models.js            程序化骨架人物、動物、器械、配色與造型目錄
+js/anim.js              姿勢動畫、步態、待機動作、補間動畫、粒子
+js/timeline.js          以真實時間計時的時間軸與動畫事件
+js/choreo.js            改版第一版動作編排
+js/choreo3.js           改版第二版動作編排（真人行走、駿馬奔馳、電影鏡頭）
+js/scene.js             算繪、打光、棋盤貼圖、鏡頭取景、點選
+js/audio.js             WebAudio 音效合成（所有聲音即時產生）
+js/net.js               WebRTC 線上對戰
+js/main.js              遊戲主控：輸入、改版前的吃子演出、介面、對照面板
+vendor/                 本地打包的 three.js r170 與 PeerJS 1.5.4
+docs/                   改版紀錄與對照圖
 ```

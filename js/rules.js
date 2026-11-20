@@ -1,6 +1,6 @@
-// 中國象棋規則引擎 — Xiangqi rules engine (complete official move rules)
-// Board: Int8Array(90), index = row*9 + col. Row 0 = top (Black side), row 9 = bottom (Red side).
-// Piece codes: +red / -black.  1帥將 2仕士 3相象 4傌馬 5俥車 6炮砲 7兵卒
+// 中國象棋規則引擎 — 完整實作官方走子規則
+// 棋盤：Int8Array(90)，索引 = 列 × 9 + 行。第 0 列在上方（黑方），第 9 列在下方（紅方）。
+// 棋子代碼：正數為紅、負數為黑。1帥將 2仕士 3相象 4傌馬 5俥車 6炮砲 7兵卒
 
 export const K = 1, A = 2, B = 3, N = 4, R = 5, C = 6, P = 7;
 export const RED = 1, BLACK = -1;
@@ -37,9 +37,9 @@ const ownHalf = (r, s) => (s === RED ? r >= 5 : r <= 4);
 const ORTH = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const DIAG = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
 const KNIGHT = [[-2, -1, -1, 0], [-2, 1, -1, 0], [2, -1, 1, 0], [2, 1, 1, 0],
-                [-1, -2, 0, -1], [1, -2, 0, -1], [-1, 2, 0, 1], [1, 2, 0, 1]]; // dr,dc,legdr,legdc
+                [-1, -2, 0, -1], [1, -2, 0, -1], [-1, 2, 0, 1], [1, 2, 0, 1]]; // 列差、行差、馬腿列差、馬腿行差
 
-/** Pseudo-legal moves (piece movement rules only). capturesOnly for quiescence. */
+/** 只依各子走法產生的候選著法（尚未檢查送將）。capturesOnly 供靜態搜尋只取吃子。 */
 export function pseudoMoves(b, side, capturesOnly = false) {
   const out = [];
   for (let i = 0; i < 90; i++) {
@@ -123,12 +123,12 @@ export function findKing(b, side) {
   return -1;
 }
 
-/** Is `side`'s general attacked (incl. 將帥照面 flying-general rule)? */
+/** `side` 方的將帥是否被將軍（含將帥照面）？ */
 export function inCheck(b, side) {
   const k = findKing(b, side);
   if (k < 0) return true;
   const kr = rowOf(k), kc = colOf(k), en = -side;
-  // Lines: rook / cannon / facing king
+  // 直線方向：車、炮、將帥照面
   for (const [dr, dc] of ORTH) {
     let rr = kr + dr, cc = kc + dc, screens = 0;
     while (inBoard(rr, cc)) {
@@ -146,17 +146,17 @@ export function inCheck(b, side) {
       rr += dr; cc += dc;
     }
   }
-  // Knights
+  // 馬
   for (const [dr, dc] of KNIGHT) {
     const nr = kr + dr, nc = kc + dc;
     if (!inBoard(nr, nc) || b[idx(nr, nc)] !== N * en) continue;
-    // leg is adjacent to the knight, toward the king along its long axis
+    // 馬腿緊鄰馬本身，位於朝向將帥的長邊方向
     const lr = Math.abs(dr) === 2 ? nr - Math.sign(dr) : nr;
     const lc = Math.abs(dc) === 2 ? nc - Math.sign(dc) : nc;
     if (!b[idx(lr, lc)]) return true;
   }
-  // Pawns
-  const pf = side === RED ? -1 : 1; // enemy pawns come from the direction the king faces
+  // 兵卒
+  const pf = side === RED ? -1 : 1; // 敵方兵卒從將帥面對的方向進攻
   if (inBoard(kr + pf, kc) && b[idx(kr + pf, kc)] === P * en) return true;
   if (kc > 0 && b[idx(kr, kc - 1)] === P * en) return true;
   if (kc < 8 && b[idx(kr, kc + 1)] === P * en) return true;
@@ -189,7 +189,7 @@ export function boardKey(b, side) {
   return s;
 }
 
-/* ---------------------- 中文記譜 Chinese move notation ---------------------- */
+/* ---------------------- 中文記譜 ---------------------- */
 const RED_NUM = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
 const BLK_NUM = ['', '１', '２', '３', '４', '５', '６', '７', '８', '９'];
 
@@ -199,12 +199,12 @@ export function notation(b, m) {
   const fileOf = c => (side === RED ? 9 - c : c + 1);
   const fr = rowOf(f), fc = colOf(f), tr = rowOf(t), tc = colOf(t);
   const name = NAMES[side][tp];
-  // same pieces on same file -> 前/中/後
+  // 同一直行有相同棋子時，改用前／中／後
   const same = [];
   for (let r = 0; r < 10; r++) if (b[idx(r, fc)] === p) same.push(r);
   let head;
   if (same.length >= 2 && tp !== K && tp !== A && tp !== B) {
-    const ordered = side === RED ? same : same.slice().reverse(); // front first
+    const ordered = side === RED ? same : same.slice().reverse(); // 前方的排在前面
     const pos = ordered.indexOf(fr);
     const tags = same.length === 2 ? ['前', '後'] : same.length === 3 ? ['前', '中', '後'] : ['一', '二', '三', '四', '五'];
     head = tags[pos] + name;
@@ -219,15 +219,15 @@ export function notation(b, m) {
   return head + act + tail;
 }
 
-/* ------------------------------ Game state ------------------------------ */
+/* ------------------------------ 對局狀態 ------------------------------ */
 export class Game {
   constructor() { this.reset(); }
   reset() {
     this.board = initialBoard();
     this.turn = RED;
-    this.history = [];   // {m, cap, notation, check, key, quiet}
+    this.history = [];   // {著法, 吃掉的子, 記譜, 是否將軍, 局面鍵, 未吃子步數}
     this.keys = [boardKey(this.board, this.turn)];
-    this.result = null;  // {winner: RED|BLACK|0, reason}
+    this.result = null;  // {勝方：紅、黑或 0（和）, 原因}
   }
   clone() {
     const g = new Game();
@@ -272,13 +272,13 @@ export class Game {
       this.result = { winner: -this.turn, reason: mated ? '將死' : '困斃' };
       return;
     }
-    // 長將判負 / 重複局面判和 (perpetual check loses; otherwise threefold repetition = draw)
+    // 長將判負；其餘三次重複局面判和
     const key = this.keys[this.keys.length - 1];
     const occ = [];
     for (let i = this.keys.length - 1; i >= 0; i--) if (this.keys[i] === key) occ.push(i);
     if (occ.length >= 3) {
-      const start = occ[occ.length - 1];        // first occurrence
-      const plies = this.history.slice(start);  // moves within the cycle
+      const start = occ[occ.length - 1];        // 第一次出現的位置
+      const plies = this.history.slice(start);  // 循環內的著法
       const checksBy = s => plies.filter(h => h.side === s).every(h => h.check);
       const rc = checksBy(RED), bc = checksBy(BLACK);
       if (rc && !bc) this.result = { winner: BLACK, reason: '紅方長將判負' };
@@ -286,12 +286,12 @@ export class Game {
       else this.result = { winner: 0, reason: '重複局面和棋' };
       return;
     }
-    // 六十回合自然限著 (120 plies without capture)
+    // 六十回合自然限著（120 步未吃子）
     if (this.history[this.history.length - 1].quiet >= 120) {
       this.result = { winner: 0, reason: '六十回合無吃子，和棋' };
       return;
     }
-    // 雙方無進攻子力 — insufficient material
+    // 雙方都沒有可進攻的子力
     let attackers = 0;
     for (let i = 0; i < 90; i++) { const t = typeOf(this.board[i]); if (t === R || t === N || t === C || t === P) attackers++; }
     if (!attackers) this.result = { winner: 0, reason: '雙方無進攻子力，和棋' };

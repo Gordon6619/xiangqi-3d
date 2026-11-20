@@ -1,8 +1,8 @@
-// 時間軸引擎 — wall-clock choreography with animation events.
-// Tracks are positioned by real milliseconds (not frame deltas), so a 600 ms move takes 600 ms even when
-// frames drop, and the sound scheduled for an event lands on the same moment as its picture.
+// 時間軸引擎 — 以真實時間計時的動作編排與動畫事件。
+// 軌道以真實毫秒定位（不是逐格累加），所以即使掉幀，600 毫秒的動作仍然是 600 毫秒，
+// 為事件排程的聲音也會落在畫面出現的同一瞬間。
 
-/** Shared clock. In manual mode (frame-by-frame capture / tests) time only moves when stepped. */
+/** 共用時鐘。手動模式（逐格截圖、測試）下，只有逐格推進時時間才會前進。 */
 export const Clock = {
   manual: false, t: 0,
   now() { return this.manual ? this.t : performance.now(); },
@@ -34,7 +34,7 @@ export class Timeline {
       this.update();
     });
   }
-  /** Cancel everything (e.g. new game, undo). Tracks jump to their end state. */
+  /** 中止所有編排（例如新局、悔棋），各軌道直接跳到結束狀態。 */
   finishAll() {
     for (const s of this.running) {
       s.tracks.forEach(t => { if (!t.done) { t.fn(1, 1); t.done = true; } });
@@ -59,7 +59,7 @@ export class Timeline {
         ev.fn({ late: t - ev.at, start: s.start, target: s.start + ev.at });
         if (ev.av) s.avMarks.push({ name: ev.av, target: s.start + ev.at, frame: null });
       }
-      // The move counts as finished at `total`; trailing settle motion (armour, carriage) keeps playing in the background.
+      // 到達 `total` 即視為這步完成；之後的回穩動作（肩甲、砲車）在背景繼續播完。
       if (!s.resolved && t >= s.total && s.events.every(e => e.fired || e.at > s.total)) {
         s.resolved = true;
         this.log.unshift({ name: s.name, planned: s.total, actual: now - s.start, av: s.avMarks });
@@ -69,7 +69,7 @@ export class Timeline {
       if (s.resolved && s.tracks.every(tr => tr.done) && s.events.every(e => e.fired)) this.running.splice(i, 1);
     }
   }
-  /** Called right after a frame is drawn: the first frame drawn at/after an AV event's moment is its "contact frame". */
+  /** 每畫完一格就呼叫：音畫事件時間點之後畫出的第一格，就是它的「接觸畫面」。 */
   markFrame(perfNow) {
     const all = this.running.flatMap(s => s.avMarks).concat(this.log.flatMap(l => l.av));
     for (const m of all) if (m.frame == null && perfNow >= m.target) m.frame = perfNow;

@@ -15,7 +15,7 @@
 <div id="app">
   <div id="stage" aria-label="3D 棋盤"></div>
 
-  <!-- top bar -->
+  <!-- 頂部列 -->
   <header id="topbar">
     <button class="icon" id="btnMenu" title="選單" aria-label="選單">☰</button>
     <div id="turnBox"><span id="turnDot"></span><span id="turnText">紅方先行</span></div>
@@ -26,7 +26,7 @@
     <button class="icon" id="btnSound" title="音效" aria-label="音效">🔊</button>
   </header>
 
-  <!-- info panel (side on desktop, bottom drawer on phones) -->
+  <!-- 資訊面板（桌機在側邊，手機為底部抽屜） -->
   <aside id="panel" class="collapsed">
     <div id="panelHandle"><span id="statusLine">準備開始</span><span class="chev">▴</span></div>
     <div id="panelBody">
@@ -46,7 +46,7 @@
   <section id="lab" hidden aria-label="改版原型對照">
     <div class="lab-head">
       <b>改版原型</b>
-      <div class="seg" id="labVer"><button data-v="v1">改版前</button><button data-v="v2">改版後</button></div>
+      <div class="seg" id="labVer"><button data-v="v1">改版前</button><button data-v="v2">第一版</button><button data-v="v3">第二版</button></div>
       <button id="labAuto" class="primary small">示範兩步</button>
       <button id="labMin" class="icon tiny" aria-label="收合">▾</button>
     </div>
@@ -61,7 +61,7 @@
   <div id="banner" aria-live="assertive"></div>
   <div id="thinking" hidden><span></span><span></span><span></span> 電腦思考中</div>
 
-  <!-- start / main menu -->
+  <!-- 開始／主選單 -->
   <div class="modal" id="menu">
     <div class="card wide">
       <h1>楚漢 <b>3D</b> 象棋</h1>
@@ -118,7 +118,7 @@
     </div>
   </div>
 
-  <!-- customization -->
+  <!-- 角色自訂 -->
   <div class="modal" id="custom" hidden>
     <div class="card wide">
       <h2>角色與動物自訂</h2>
@@ -133,7 +133,7 @@
         <label>角色大小<input type="range" id="figScale" min="0.7" max="1.4" step="0.05"></label>
         <label>動畫速度<input type="range" id="animSpeed" min="0.5" max="2" step="0.1"></label>
         <label>音量<input type="range" id="volume" min="0" max="1" step="0.05"></label>
-        <label>演出強度<select id="intensity"><option value="fast">快速</option><option value="standard">標準（全盤構圖）</option><option value="cinematic">電影（將殺特寫）</option></select></label>
+        <label>演出強度<select id="intensity"><option value="fast">快速</option><option value="standard">標準（全盤構圖）</option><option value="cinematic">電影（跟拍與慢動作）</option></select></label>
         <label class="check"><input type="checkbox" id="cinematic"> 改版前：吃子電影鏡頭</label>
         <label class="check"><input type="checkbox" id="badges"> 頭頂浮動字牌</label>
         <label class="check"><input type="checkbox" id="music"> 古箏背景音樂</label>
@@ -144,7 +144,7 @@
     </div>
   </div>
 
-  <!-- dialogs -->
+  <!-- 對話框 -->
   <div class="modal" id="dialog" hidden>
     <div class="card">
       <h2 id="dlgTitle"></h2>

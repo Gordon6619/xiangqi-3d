@@ -1,5 +1,5 @@
-// 程序化音效引擎 — all sounds are synthesized in real time with WebAudio (no external files).
-// Every piece type has its own movement voice; captures have layered impact + debris + type-specific accents.
+// 程序化音效引擎 — 所有聲音都以 WebAudio 即時合成，不使用任何外部音檔。
+// 每種棋子各有專屬的移動聲；吃子聲由撞擊、碎屑與各兵種特色音層層疊加。
 
 export class SFX {
   constructor() {
@@ -15,13 +15,13 @@ export class SFX {
     if (this.ctx.state === 'suspended') this.ctx.resume();
     return this.ctx;
   }
-  /** Build the mixing graph on a context (a live AudioContext, or an OfflineAudioContext for tests). */
+  /** 在音訊環境上建立混音線路（即時的 AudioContext，或測試用的 OfflineAudioContext）。 */
   attach(ctx) {
     {
       this.ctx = ctx;
       this.master = this.ctx.createGain();
       this.master.gain.value = this.volume;
-      // gentle room reverb
+      // 輕微的室內殘響
       this.comp = this.ctx.createDynamicsCompressor();
       this.comp.threshold.value = -14; this.comp.ratio.value = 4;
       this.reverb = this.ctx.createConvolver();
@@ -30,7 +30,7 @@ export class SFX {
       this.master.connect(this.comp);
       this.master.connect(this.reverb); this.reverb.connect(this.revGain); this.revGain.connect(this.comp);
       this.comp.connect(this.ctx.destination);
-      this.dry = this.ctx.createGain(); this.dry.gain.value = this.volume; this.dry.connect(this.comp); // no reverb send
+      this.dry = this.ctx.createGain(); this.dry.gain.value = this.volume; this.dry.connect(this.comp); // 不送殘響的乾聲路徑
       this._noise = this._noiseBuf(2);
       this._last = {};
     }
@@ -53,7 +53,7 @@ export class SFX {
   }
   get now() { return this.ctx.currentTime; }
 
-  // ---------- primitives ----------
+  // ---------- 基本音源 ----------
   env(g, t, a, peak, d, sustain = 0.0001) {
     g.gain.cancelScheduledValues(t);
     g.gain.setValueAtTime(0.0001, t);
@@ -88,7 +88,7 @@ export class SFX {
     s.start(T, Math.random() * 1.5); s.stop(T + a + dur + 0.05);
   }
   metal({ t = 0, f = 900, vol = 0.25, dur = 0.6 }) {
-    // inharmonic partials = metallic ring
+    // 非諧和泛音形成金屬餘韻
     [1, 2.76, 5.4, 8.93].forEach((k, i) => this.tone({ t, type: 'sine', f: f * k, dur: dur / (1 + i * 0.6), vol: vol / (1 + i), a: 0.001 }));
     this.noise({ t, dur: 0.05, vol: vol * 0.8, type: 'highpass', f: 4000 });
   }
@@ -107,10 +107,10 @@ export class SFX {
     if (armor) this.metal({ t: t + 0.01, f: 1800 + Math.random() * 400, vol: vol * 0.25, dur: 0.18 });
   }
 
-  // ================= 改版音效：綁在動畫事件上的短音 (event-bound cues) =================
-  // Each cue has 3 variants; the same variant never plays twice in a row.
-  // `perfTarget` is the performance.now() moment the matching picture appears; output latency is subtracted
-  // so the sound reaches the speaker on that frame.
+  // ================= 改版音效：綁在動畫事件上的短音 =================
+  // 每種聲音有 3 個變體，連續兩次不會播放同一個。
+  // `perfTarget` 是對應畫面出現時的 performance.now() 時間點；排程時會扣除輸出延遲，
+  // 讓聲音剛好在那一格畫面時從喇叭發出。
   offsetFor(perfTarget) {
     const c = this.ctx;
     if (perfTarget == null || typeof perfTarget !== 'number') return 0;
@@ -127,7 +127,7 @@ export class SFX {
     this._last[name] = i;
     return i;
   }
-  /** Play an event cue. `at` = performance.now() target (live) or seconds offset when `rawT` is set (offline tests). */
+  /** 播放事件音效。`at` 為即時模式下的 performance.now() 目標時間；設定 `rawT` 時則為秒數位移（離線測試用）。 */
   cue(name, at = null, { rawT = false, variant = null } = {}) {
     if (!this.ctx && !this.ensure()) return;
     if (!this.enabled) return;
@@ -137,14 +137,14 @@ export class SFX {
     if (fn) fn.call(this, t, v);
     return { t, v };
   }
-  // 炮身壓低：短機括 — a latch click + short ratchet, bright enough for phone speakers
+  // 炮身壓低：短機括 — 一聲卡榫加短促棘輪聲，頻率夠亮，手機喇叭也聽得到
   cue_mech(t, v) {
     const P = [{ f: 2400, r: 3, c: 320 }, { f: 2100, r: 2, c: 290 }, { f: 2750, r: 3, c: 350 }][v];
     this.noise({ t, dur: 0.012, a: 0.001, vol: 1.0, type: 'bandpass', f: P.f, q: 6, dest: this.dry });
     this.tone({ t: t + 0.004, type: 'triangle', f: P.c * 1.6, f2: P.c, dur: 0.05, vol: 0.4, a: 0.001, dest: this.dry });
     for (let j = 0; j < P.r; j++) this.noise({ t: t + 0.022 + j * 0.021, dur: 0.008, a: 0.001, vol: 0.42, type: 'bandpass', f: P.f * 0.8, q: 8, dest: this.dry });
   }
-  // 命中：厚實的撞擊 — sub body + 400–500 Hz knock (what a phone speaker reproduces) + 2 kHz crack
+  // 命中：厚實的撞擊 — 低頻本體 + 400–500 Hz 悶擊（手機喇叭能播出的頻段）+ 2 kHz 脆裂
   cue_impact(t, v) {
     const P = [{ b: 150, m: 470, c: 2200 }, { b: 135, m: 430, c: 1900 }, { b: 165, m: 520, c: 2500 }][v];
     this.tone({ t, type: 'sine', f: P.b * 1.5, f2: P.b * 0.5, dur: 0.24, vol: 0.9, a: 0.001 });
@@ -160,11 +160,11 @@ export class SFX {
     this.tone({ t, type: 'sine', f: f * 2.4, dur: 0.03, vol: 0.12, a: 0.001, dest: this.dry });
     this.noise({ t, dur: 0.02, a: 0.001, vol: 0.22, type: 'bandpass', f: f * 2.2, q: 4, dest: this.dry });
   }
-  // 普通步：一聲乾淨的腳步 — dry, short, duller than the wooden placement
+  // 普通步：一聲乾淨的腳步 — 乾、短，比木質落盤更悶
   cue_step(t, v) {
     const P = [{ f: 1100, p: 120 }, { f: 950, p: 105 }, { f: 1250, p: 135 }][v];
     this.noise({ t, dur: 0.055, a: 0.002, vol: 0.8, type: 'lowpass', f: P.f, f2: P.f * 0.4, dest: this.dry });
-    this.noise({ t, dur: 0.03, a: 0.001, vol: 0.32, type: 'bandpass', f: P.f * 1.5, q: 1.4, dest: this.dry }); // scuff: carries on phone speakers
+    this.noise({ t, dur: 0.03, a: 0.001, vol: 0.32, type: 'bandpass', f: P.f * 1.5, q: 1.4, dest: this.dry }); // 摩擦聲：在手機喇叭上依然清楚
     this.tone({ t, type: 'sine', f: P.p, f2: P.p * 0.6, dur: 0.05, vol: 0.5, a: 0.002, dest: this.dry });
     this.noise({ t: t + 0.004, dur: 0.012, a: 0.001, vol: 0.15, type: 'highpass', f: 2500, dest: this.dry });
   }
@@ -195,8 +195,8 @@ export class SFX {
   deny() { if (!this.ensure() || !this.enabled) return; this.tone({ type: 'square', f: 180, f2: 120, dur: 0.15, vol: 0.08 }); }
   place() { if (!this.ensure() || !this.enabled) return; this.wood({ f: 700, vol: 0.55 }); this.thud({ f: 110, vol: 0.25, dur: 0.12 }); }
 
-  // ---------- per-piece movement voices ----------
-  // duration (s) is how long the piece travels so the sound matches the animation
+  // ---------- 各棋子的移動聲（改版前） ----------
+  // duration（秒）為棋子移動時間，讓聲音長度配合動畫
   move(type, dur = 0.8, theme = 'warrior') {
     if (!this.ensure() || !this.enabled) return;
     const fn = {
@@ -205,7 +205,7 @@ export class SFX {
     }[type];
     fn && fn();
   }
-  // 帥/將: heavy armored stride + war drum + armor clank
+  // 帥／將：沉重的著甲步伐 + 戰鼓 + 甲片碰撞
   moveGeneral(dur) {
     this.tone({ type: 'sine', f: 70, f2: 45, dur: 0.5, vol: 0.55 });
     this.noise({ dur: 0.35, vol: 0.25, type: 'lowpass', f: 300 });
@@ -213,14 +213,14 @@ export class SFX {
     for (let i = 0; i < n; i++) this.step({ t: 0.12 + i * dur / n, vol: 0.45, armor: true, pitch: 0.8 });
     this.metal({ t: dur * 0.5, f: 620, vol: 0.12, dur: 0.9 });
   }
-  // 仕/士: silk robe swish + light steps + jade pendant tinkle
+  // 仕／士：絲袍摩擦 + 輕盈腳步 + 玉珮叮噹
   moveAdvisor(dur) {
     this.noise({ dur: dur * 0.8, a: 0.15, vol: 0.12, type: 'bandpass', f: 2500, f2: 5000, q: 0.7 });
     const n = Math.max(2, Math.round(dur / 0.25));
     for (let i = 0; i < n; i++) this.step({ t: i * dur / n, vol: 0.18, pitch: 1.4 });
     [2093, 2637, 3136].forEach((f, i) => this.tone({ t: 0.1 + i * 0.09, f, dur: 0.5, vol: 0.06 }));
   }
-  // 相/象: elephant trumpet + ground-shaking stomps
+  // 相／象：象鳴 + 震地的踏步
   moveElephant(dur) {
     this.tone({ type: 'sawtooth', f: 330, f2: 520, dur: 0.55, vol: 0.11, a: 0.06, vib: 18, vibRate: 9 });
     this.tone({ type: 'square', f: 335, f2: 500, dur: 0.5, vol: 0.05, a: 0.08, vib: 14, vibRate: 11 });
@@ -228,18 +228,18 @@ export class SFX {
     const n = Math.max(2, Math.round(dur / 0.38));
     for (let i = 0; i < n; i++) this.thud({ t: 0.25 + i * dur / n, f: 55, vol: 0.55, dur: 0.35 });
   }
-  // 傌/馬: four-beat gallop + whinny
+  // 傌／馬：四拍馬蹄 + 馬嘶
   moveHorse(dur) {
     const beats = Math.max(2, Math.round(dur / 0.28));
     for (let b = 0; b < beats; b++) {
       const t0 = b * dur / beats;
       [0, 0.05, 0.12, 0.16].forEach((o, k) => this.wood({ t: t0 + o, f: 520 + k * 60 + Math.random() * 40, vol: 0.28 }));
     }
-    // whinny: FM-ish downward vibrato
+    // 馬嘶：向下滑的顫音
     this.tone({ t: 0.02, type: 'sawtooth', f: 900, f2: 600, dur: 0.55, vol: 0.06, a: 0.04, vib: 70, vibRate: 15 });
     this.tone({ t: 0.02, type: 'triangle', f: 1350, f2: 800, dur: 0.5, vol: 0.04, a: 0.04, vib: 90, vibRate: 15 });
   }
-  // 俥/車: rumbling wheels + rattling frame
+  // 俥／車：轆轆車輪 + 車架晃響
   moveChariot(dur) {
     this.noise({ dur, a: 0.08, vol: 0.4, type: 'lowpass', f: 220, f2: 140, q: 3 });
     this.noise({ dur, a: 0.1, vol: 0.12, type: 'bandpass', f: 800, q: 6, rate: 0.5 });
@@ -247,14 +247,14 @@ export class SFX {
     for (let i = 0; i < n; i++) this.wood({ t: i * 0.07 + Math.random() * 0.02, f: 300 + Math.random() * 200, vol: 0.08 });
     this.tone({ type: 'sawtooth', f: 48, dur, vol: 0.06, a: 0.1, vib: 4, vibRate: 13 });
   }
-  // 炮/砲: wooden wheel creak + heavy bronze barrel
+  // 炮／砲：木輪吱嘎 + 厚重銅砲身
   moveCannon(dur) {
     this.tone({ type: 'sawtooth', f: 260, f2: 190, dur: dur * 0.6, vol: 0.05, a: 0.05, vib: 25, vibRate: 7 });
     this.noise({ dur, a: 0.1, vol: 0.3, type: 'lowpass', f: 300 });
     this.metal({ t: dur * 0.9, f: 260, vol: 0.18, dur: 1.1 });
     this.thud({ t: dur * 0.95, f: 70, vol: 0.4 });
   }
-  // 兵/卒: marching boots + spear tap + short drum roll
+  // 兵／卒：行軍靴聲 + 槍桿輕敲 + 短促鼓點
   moveSoldier(dur) {
     const n = Math.max(3, Math.round(dur / 0.18));
     for (let i = 0; i < n; i++) this.step({ t: i * dur / n, vol: 0.28, pitch: 1.15, armor: i % 2 === 0 });
@@ -263,7 +263,7 @@ export class SFX {
     this.wood({ t: dur, f: 900, vol: 0.3 });
   }
 
-  // ---------- quiet ambient sounds for idle behaviours ----------
+  // ---------- 待機動作的輕聲環境音 ----------
   idle(kind) {
     if (!this.ensure() || !this.enabled) return;
     const q = 0.45, pan = (Math.random() - 0.5) * 0.8;
@@ -281,23 +281,23 @@ export class SFX {
     }
   }
 
-  // ---------- capture (tension + impact) ----------
+  // ---------- 吃子（蓄勢張力 + 撞擊，改版前） ----------
   windup(type) {
     if (!this.ensure() || !this.enabled) return;
-    // rising tension swell
+    // 逐漸升高的緊張感
     this.noise({ dur: 0.45, a: 0.4, vol: 0.18, type: 'bandpass', f: 300, f2: 3000, q: 1.5 });
     this.tone({ type: 'sawtooth', f: 80, f2: 160, dur: 0.45, a: 0.4, vol: 0.06 });
-    if (type === 'B') this.tone({ type: 'sawtooth', f: 400, f2: 700, dur: 0.7, a: 0.08, vol: 0.12, vib: 25, vibRate: 10 }); // angry trumpet
-    if (type === 'N') this.tone({ type: 'sawtooth', f: 1100, f2: 700, dur: 0.7, vol: 0.07, a: 0.03, vib: 110, vibRate: 17 }); // rearing neigh
-    if (type === 'K' || type === 'P' || type === 'A') this.metal({ t: 0.1, f: 1400, vol: 0.12, dur: 0.5 }); // blade drawn
-    if (type === 'C') { this.noise({ dur: 0.6, vol: 0.12, type: 'highpass', f: 5000 }); } // fuse sizzle
+    if (type === 'B') this.tone({ type: 'sawtooth', f: 400, f2: 700, dur: 0.7, a: 0.08, vol: 0.12, vib: 25, vibRate: 10 }); // 憤怒的象鳴
+    if (type === 'N') this.tone({ type: 'sawtooth', f: 1100, f2: 700, dur: 0.7, vol: 0.07, a: 0.03, vib: 110, vibRate: 17 }); // 人立而起的馬嘶
+    if (type === 'K' || type === 'P' || type === 'A') this.metal({ t: 0.1, f: 1400, vol: 0.12, dur: 0.5 }); // 拔刃聲
+    if (type === 'C') { this.noise({ dur: 0.6, vol: 0.12, type: 'highpass', f: 5000 }); } // 引信嘶嘶聲
   }
   impact(attType, victimType) {
     if (!this.ensure() || !this.enabled) return;
-    // whoosh
+    // 破風聲
     this.noise({ dur: 0.18, a: 0.12, vol: 0.3, type: 'bandpass', f: 600, f2: 2500, q: 2 });
     const t = 0.12;
-    if (attType === 'C') {               // 炮 — cannon shot explosion
+    if (attType === 'C') {               // 炮：砲擊爆炸
       this.thud({ t: 0, f: 60, vol: 0.9, dur: 0.6 });
       this.noise({ t: 0, dur: 0.25, vol: 0.6, type: 'lowpass', f: 3000, f2: 200 });
       this.noise({ t: t + 0.25, dur: 1.4, vol: 0.7, type: 'lowpass', f: 1800, f2: 60 });
@@ -309,18 +309,18 @@ export class SFX {
       if (attType === 'B') this.thud({ t: t + 0.12, f: 45, vol: 0.9, dur: 0.6 });
       if (attType === 'N') [0, 0.06].forEach(o => this.wood({ t: t + o, f: 450, vol: 0.5 }));
     }
-    // victim cry
+    // 被吃一方的叫聲
     if (victimType === 'N') this.tone({ t: t + 0.05, type: 'sawtooth', f: 1000, f2: 400, dur: 0.6, vol: 0.06, vib: 80, vibRate: 18 });
     else if (victimType === 'B') this.tone({ t: t + 0.05, type: 'sawtooth', f: 500, f2: 200, dur: 0.8, vol: 0.09, vib: 20, vibRate: 9 });
     else this.tone({ t: t + 0.05, type: 'triangle', f: 330, f2: 120, dur: 0.35, vol: 0.12 });
-    // debris / disc bouncing on wood
+    // 碎屑在木桌上彈跳
     for (let i = 0; i < 6; i++) this.wood({ t: t + 0.35 + i * (0.16 - i * 0.018), f: 900 + Math.random() * 600, vol: 0.25 / (1 + i * 0.5) });
-    // dramatic low drum hit
+    // 低沉的重鼓
     this.tone({ t: t + 0.02, type: 'sine', f: 55, f2: 40, dur: 1.2, vol: 0.5 });
   }
   check() {
     if (!this.ensure() || !this.enabled) return;
-    // 將軍 — gong crash
+    // 將軍：銅鑼聲
     [1, 1.48, 2.11, 2.9, 3.7].forEach((k, i) => this.tone({ type: 'sine', f: 150 * k, dur: 2.2 / (1 + i * 0.3), vol: 0.22 / (1 + i * 0.4), a: 0.003, vib: 2 + i, vibRate: 3 }));
     this.noise({ dur: 1.5, vol: 0.18, type: 'bandpass', f: 1800, q: 0.8 });
   }
@@ -335,12 +335,12 @@ export class SFX {
     if (!this.ensure() || !this.enabled) return;
     [392, 349, 311, 262].forEach((f, i) => this.pluck(f, i * 0.28, 0.35));
   }
-  pluck(f, t = 0, vol = 0.25) { // guzheng-like pluck
+  pluck(f, t = 0, vol = 0.25) { // 類似古箏的撥弦聲
     this.tone({ t, type: 'triangle', f, dur: 1.2, vol, a: 0.002, vib: 3, vibRate: 5 });
     this.tone({ t, type: 'sine', f: f * 2, dur: 0.6, vol: vol * 0.4, a: 0.002 });
     this.noise({ t, dur: 0.02, vol: vol * 0.4, type: 'highpass', f: 3000 });
   }
-  // ambient pentatonic guzheng music
+  // 五聲音階的古箏背景音樂
   setMusic(on) {
     this.musicOn = on;
     clearTimeout(this._musicTimer);

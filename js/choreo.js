@@ -1,5 +1,5 @@
-// 改版編排 (v2 choreography) — every move is one wall-clock timeline whose events drive the sounds.
-// Standard framing never moves the camera: the whole board stays in view.
+// 改版第一版編排 — 每一步棋都是一條真實時間的時間軸，由時間軸事件觸發聲音。
+// 標準構圖下鏡頭完全不動，整個棋盤始終在畫面中。
 import * as THREE from 'three';
 import { curves } from './timeline.js';
 
@@ -31,15 +31,15 @@ function setOpacity(obj, a) {
 }
 
 export function createChoreo(C) {
-  // C: { stage, fx, sfx, timeline, states, settings, placeInGrave, cellPos }
+  // C：外部傳入的依賴物件 { stage, fx, sfx, timeline, states, settings, placeInGrave, cellPos }
   const I = () => INTENSITY[C.settings.intensity] || INTENSITY.standard;
   const tune = () => ({ ...TUNE_DEFAULTS, ...(C.settings.tune || {}) });
   const cue = (name, av) => ({ lead: 120, av, fn: info => { if (!info.skipped) C.sfx.cue(name, info.target); } });
   const stOf = o => C.states.get(o);
 
-  /* ---------- shared pieces of the rhythm ---------- */
+  /* ---------- 節奏中共用的片段 ---------- */
   function exitTracks(victim, p1, dir, at) {
-    const base = victim.quaternion.clone(), axis = new THREE.Vector3(dir.z, 0, -dir.x).normalize(); // tip away from the attacker
+    const base = victim.quaternion.clone(), axis = new THREE.Vector3(dir.z, 0, -dir.x).normalize(); // 朝遠離攻擊者的方向傾倒
     const q = new THREE.Quaternion();
     return [{
       at, dur: 240, ease: curves.out,
@@ -74,11 +74,11 @@ export function createChoreo(C) {
     const dir = p1.clone().sub(p0).setY(0).normalize();
     st.mode = 'hold'; st.add = {}; vs.mode = 'hold';
     const h = obj.userData.holder, y0 = h.rotation.y, dy = angDiff(y0, yawTo(p0, p1));
-    // projectile over the screen ("炮架")
+    // 越過炮架的砲彈
     const sBox = new THREE.Box3().setFromObject(screen), sPos = screen.position.clone();
     const ball = new THREE.Mesh(catapult ? new THREE.DodecahedronGeometry(0.12, 1) : new THREE.SphereGeometry(0.11, 16, 12),
       new THREE.MeshStandardMaterial({ color: catapult ? 0x9a948c : 0x3a2a22, roughness: catapult ? 0.9 : 0.35, metalness: catapult ? 0 : 0.6, emissive: catapult ? 0x3a2a14 : 0xff5a10, emissiveIntensity: catapult ? 1 : 1.6 }));
-    // short glowing streak behind the shot so the arc reads on a phone
+    // 砲彈後方的短發光拖尾，讓弧線在手機上也看得清楚
     const streak = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.07, 1, 10, 1, true), new THREE.MeshBasicMaterial({ color: catapult ? 0xe8dcc0 : 0xffb050, transparent: true, opacity: 0.75, depthWrite: false, blending: THREE.AdditiveBlending }));
     streak.visible = false; C.stage.scene.add(streak);
     const prevPos = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
@@ -87,7 +87,7 @@ export function createChoreo(C) {
     let H = 1;
     const glow = C.stage.makeBaseGlow(sPos);
     const tracks = [
-      { at: 0, dur: crouch, ease: curves.out, fn: kk => { // 壓低炮身 (and swing onto the target line)
+      { at: 0, dur: crouch, ease: curves.out, fn: kk => { // 壓低炮身（同時轉向目標線）
         h.rotation.y = y0 + dy * kk;
         st.add = catapult ? { bodyY: -0.06 * kk, arm: 0.3 * kk, bodyX: -0.07 * kk } : { bodyY: -0.065 * kk, pitch: -0.3 * kk, bodyX: -0.08 * kk };
       } },
@@ -108,7 +108,7 @@ export function createChoreo(C) {
         ball.position.lerpVectors(from, target, kk); ball.position.y += Math.sin(Math.PI * kk) * H;
         ball.rotation.x += 0.3;
         const v = ball.position.clone().sub(prevPos);
-        if (v.lengthSq() > 1e-6) { // streak points back along the flight path
+        if (v.lengthSq() > 1e-6) { // 拖尾沿飛行路徑指向後方
           const len = 0.45; streak.visible = true; streak.scale.set(1, len, 1);
           streak.quaternion.setFromUnitVectors(up, v.normalize().negate());
           streak.position.copy(ball.position).addScaledVector(v, len / 2);
@@ -165,7 +165,7 @@ export function createChoreo(C) {
     const events = [
       { at: contact, ...cue('step', 'step') },
       { at: contact, fn: () => { st.kick = 7; if (I().fx) C.fx.burst(p1.clone().setY(0.03), { count: 4, color: 0xb59a74, speed: 0.35, size: 0.02, life: 0.5, gravity: 1.2, emissive: false }); } },
-      ...landEvents(contact, to, check).filter(e => !e.av), // the step is the only sound of a plain move
+      ...landEvents(contact, to, check).filter(e => !e.av), // 普通走子只有腳步這一聲
     ];
     if (check) events.push({ at: contact + 30, ...cue('drum', 'drum') });
     return C.timeline.play({ name: '一步', tracks, events, dur: turnBack ? T + 200 : T }).then(() => { st.mode = 'idle'; st.add = {}; st.amp = 1; st.speed = 0; });
@@ -232,7 +232,7 @@ export function createChoreo(C) {
     return C.timeline.play({ name: '象', tracks, events, dur: T + 180 }).then(() => { st.mode = 'idle'; st.add = {}; });
   }
 
-  /* ---------- melee capture (shares the 600 ms rhythm: approach → strike → exit → occupy) ---------- */
+  /* ---------- 近身吃子（共用 600 毫秒節奏：逼近 → 出擊 → 退場 → 占格） ---------- */
   function meleeCapture({ obj, victim, p0, p1, to, check, curve }) {
     const k = I().time, total = 600 * k, dashEnd = 280 * k, impact = 330 * k, land = total - 20 * k;
     const st = stOf(obj), vs = stOf(victim), h = obj.userData.holder, y0 = h.rotation.y, yaw = yawTo(p0, p1), dy = angDiff(y0, yaw);
@@ -256,7 +256,7 @@ export function createChoreo(C) {
   }
 
   return {
-    /** Dispatch a move. info: { obj, victim, screen, p0, p1, to:{r,c}, check:{pos,side}|null, curve } */
+    /** 分派一步棋。info：{ obj, victim, screen, p0, p1, to:{r,c}, check:{pos,side}|null, curve } */
     play(info) {
       const rig = info.obj.userData.rig;
       if (info.victim) {
