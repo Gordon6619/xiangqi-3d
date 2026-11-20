@@ -1,10 +1,10 @@
-// Alpha-beta AI for Xiangqi (iterative deepening + quiescence + MVV-LVA + killer/history)
+// 象棋 AI：α-β 剪枝搜尋（逐步加深、靜態搜尋、MVV-LVA 吃子排序、殺手著法與歷史啟發）
 import { K, A, B, N, R, C, P, RED, BLACK, pseudoMoves, makeMove, unmakeMove, inCheck,
   mFrom, mTo, typeOf, sideOf, rowOf, colOf, legalMoves } from './rules.js';
 
 const VAL = [0, 6000, 120, 120, 270, 600, 285, 30];
 
-// Piece-square tables from Red's perspective (row 0 = enemy back rank). 10x9
+// 子力位置分數表，以紅方視角排列（第 0 列為敵方底線），10 列 × 9 行
 const PST = {
   [P]: [
     0, 3, 6, 9, 12, 9, 6, 3, 0,
@@ -110,7 +110,7 @@ export function search(board, side, { maxDepth = 4, timeMs = 1500, randomness = 
     if ((++nodes & 1023) === 0 && performance.now() - t0 > timeMs) stop = true;
     if (stop) return 0;
     const checked = inCheck(b, s);
-    if (checked) depth++; // check extension
+    if (checked) depth++; // 被將軍時延伸搜尋一層
     if (depth <= 0) return quiesce(alpha, beta, s, 0);
     let best = -MATE + ply, legal = 0;
     for (const m of order(pseudoMoves(b, s), ply)) {
@@ -152,11 +152,11 @@ export function search(board, side, { maxDepth = 4, timeMs = 1500, randomness = 
     }
     if (stop && !iterBest) break;
     if (iterBest) { bestMove = iterBest; bestScore = iterScore; reached = d; }
-    // re-order root by score for next iteration
+    // 依本輪分數重排根節點著法，供下一輪先搜
     scored.sort((x, y) => y[0] - x[0]);
     rootMoves = scored.map(x => x[1]).concat(rootMoves.filter(m => !scored.some(s => s[1] === m)));
     if (stop || Math.abs(bestScore) > MATE - 100) break;
-    // randomness for easy levels: pick among near-best moves
+    // 低難度加入隨機：在接近最佳的著法中任選
     if (randomness && d === maxDepth) {
       const near = scored.filter(x => x[0] >= iterScore - randomness);
       bestMove = near[Math.floor(Math.random() * near.length)][1];

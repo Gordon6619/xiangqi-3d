@@ -1,4 +1,4 @@
-// 線上對戰 — peer-to-peer online play over WebRTC (PeerJS signalling). No game server required.
+// 線上對戰 — 以 WebRTC 點對點連線（PeerJS 負責牽線），不需要遊戲伺服器。
 const PREFIX = 'xq3d-room-';
 
 export class NetPlay {
@@ -9,7 +9,7 @@ export class NetPlay {
 
   _peer(id) {
     if (!window.Peer) throw new Error('PeerJS 未載入');
-    // optional self-hosted PeerJS server: ?peerHost=my.server&peerPort=9000&peerPath=/xq
+    // 可改用自架的 PeerJS 牽線伺服器：?peerHost=主機&peerPort=9000&peerPath=/xq
     const q = new URLSearchParams(location.search), opts = { debug: 1 };
     if (q.get('peerHost')) Object.assign(opts, { host: q.get('peerHost'), port: +(q.get('peerPort') || 443), path: q.get('peerPath') || '/', secure: q.get('peerSecure') !== '0' });
     return new window.Peer(id, opts);
@@ -31,7 +31,7 @@ export class NetPlay {
         if (this.connected) { c.on('open', () => { c.send({ t: 'full' }); setTimeout(() => c.close(), 300); }); return; }
         this._bind(c);
       });
-      p.on('disconnected', () => { try { p.reconnect(); } catch { /* ignore */ } });
+      p.on('disconnected', () => { try { p.reconnect(); } catch { /* 忽略 */ } });
     });
   }
 
@@ -59,8 +59,8 @@ export class NetPlay {
   }
   send(msg) { if (this.connected) this.conn.send(msg); }
   close() {
-    try { this.conn?.close(); } catch { /* ignore */ }
-    try { this.peer?.destroy(); } catch { /* ignore */ }
+    try { this.conn?.close(); } catch { /* 忽略 */ }
+    try { this.peer?.destroy(); } catch { /* 忽略 */ }
     this.conn = null; this.peer = null; this.role = null;
   }
 }

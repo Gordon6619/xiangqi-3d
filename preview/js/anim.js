@@ -1,5 +1,6 @@
-// 擬真動作系統 — procedural pose animation for rigs, tweens, particles and cinematic capture choreography.
+// 擬真動作系統 — 骨架的程序化姿勢動畫、補間動畫、粒子特效。
 import * as THREE from 'three';
+import { HIP } from './models.js';
 
 export const ease = {
   linear: t => t,
@@ -9,7 +10,7 @@ export const ease = {
   back: t => { const c = 1.9; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); },
 };
 
-/* ------------------------------ tweens ------------------------------ */
+/* ------------------------------ 補間動畫 ------------------------------ */
 export class Tweener {
   constructor() { this.list = []; this.timeScale = 1; }
   add(dur, fn, e = ease.inOut) {
@@ -28,24 +29,25 @@ export class Tweener {
   }
 }
 
-/* ------------------------------ rig posing ------------------------------ */
-// state: { mode: idle|walk|gallop|windup|strike|cheer|hit|guard, walk: phase, act: 0..1 }
-// While idle every figure runs its own role-specific behaviour scheduler (擬真待機動作).
+/* ------------------------------ 骨架擺姿 ------------------------------ */
+// 狀態：{ mode: idle|walk|gait|gallop|windup|strike|cheer|hit|guard|hold, walk: 步態相位, act: 0..1 }
+// 待機時，每個角色依自己的身分輪流執行擬真待機動作。
 let idleHook = () => {};
-/** main.js registers a hook for idle side-effects: (kind, object3D, rig) kind = dust|smoke|sound:<name> */
+/** main.js 註冊待機副作用的回呼：(kind, object3D, rig)，kind 為 dust｜smoke｜sound:<名稱> */
 export function setIdleHook(fn) { idleHook = fn; }
 
 const TAU = Math.PI * 2;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
-const hold = (p, i = 0.18, o = 0.82) => smooth(0, i, p) * (1 - smooth(o, 1, p)); // ease in, hold, ease out
+const hold = (p, i = 0.18, o = 0.82) => smooth(0, i, p) * (1 - smooth(o, 1, p)); // 漸入、停留、漸出
 const rnd = (a, b) => a + Math.random() * (b - a);
+const IDLE_SLOW = 1.45;   // 待機動作放慢，看起來更沉穩
 
 function scheduler(rig, time, list) {
   const s = rig.idle ??= { cur: null, start: 0, dur: 0, next: time + rnd(0.5, 3.5), fired: {} };
-  if (s.cur && time - s.start >= s.dur) { s.cur = null; s.next = time + rnd(1.2, 4.5); }
+  if (s.cur && time - s.start >= s.dur) { s.cur = null; s.next = time + rnd(1.8, 5.5); }
   if (!s.cur && time >= s.next && list.length) {
     let pick; do { pick = list[Math.floor(Math.random() * list.length)]; } while (list.length > 1 && pick[0] === s.last);
-    s.cur = pick[0]; s.last = pick[0]; s.start = time; s.dur = pick[1] * rnd(0.85, 1.2); s.fired = {};
+    s.cur = pick[0]; s.last = pick[0]; s.start = time; s.dur = pick[1] * rnd(0.85, 1.2) * IDLE_SLOW; s.fired = {};
   }
   if (!s.cur) return null;
   const p = (time - s.start) / s.dur;
@@ -76,7 +78,7 @@ export function poseRig(rig, st, time) {
   }
 }
 
-/* ============================== humans ============================== */
+/* ============================== 人物 ============================== */
 const REST = {
   default: { a0: 0.08, a1: 0.08, f0: -0.15, f1: -0.15, a0z: -0.1, a1z: 0.1, weapX: 0 },
   marshal: { a0: -0.25, f0: -1.7, a0z: -0.75, a1: 0.1, f1: -0.35, a1z: 0.12, weapX: 0.95 },
@@ -96,7 +98,7 @@ const REST = {
   charioteer: { a0: -0.6, f0: -0.6, a0z: 0.2, a1: -0.1, f1: -0.6, a1z: 0.1, weapX: 0.7 },
 };
 function restPose(role) {
-  return { hipsY: 0.36, hipsZ: 0, chestX: 0, chestY: 0, chestZ: 0, headX: 0, headY: 0, headZ: 0, l0: 0, l1: 0, l0z: 0, l1z: 0, k0: 0.04, k1: 0.04,
+  return { hipsY: HIP, hipsZ: 0, chestX: 0, chestY: 0, chestZ: 0, headX: 0, headY: 0, headZ: 0, l0: 0, l1: 0, l0z: 0, l1z: 0, k0: 0.04, k1: 0.04,
     a0y: 0, a1y: 0, fan: 0, beard: 0, ...REST.default, ...(REST[role] || {}) };
 }
 const look = (P, p, amt = 0.75) => { P.headY += Math.sin(p * TAU) * amt; P.chestY += Math.sin(p * TAU) * amt * 0.25; };
@@ -125,42 +127,42 @@ function applyBipedIdle(P, a, r) {
     case 'look': look(P, p); break;
     case 'shift': shift(P, e); break;
     case 'nod': P.headX += Math.max(0, Math.sin(p * TAU * 2)) * 0.35 * e; break;
-    case 'raiseSword': // inspect the blade
+    case 'raiseSword': // 舉劍端詳劍刃
       P.a1 = -2.3 * e + P.a1 * (1 - e); P.f1 = -0.5 * e + P.f1 * (1 - e); P.weapX = P.weapX * (1 - e) + (-0.9) * e; P.headX -= 0.35 * e; P.chestX -= 0.1 * e;
       if (p > 0.45 && a.once('clink')) idleHook('sound:clink', r.weapon, r); break;
-    case 'command': { // point forward, commanding the troops
+    case 'command': { // 向前指揮三軍
       const k = smooth(0.1, 0.3, p) * (1 - smooth(0.75, 1, p));
       P.a1 = P.a1 * (1 - k) - 1.45 * k; P.f1 = P.f1 * (1 - k) - 0.05 * k; P.weapX = P.weapX * (1 - k) + 0.1 * k; P.chestX += 0.12 * k; P.l1 -= 0.25 * k; P.l0 += 0.2 * k;
       if (r.flag) r.flagBoost = k; break;
     }
-    case 'plant': // both hands rest on the sword pommel
+    case 'plant': // 雙手按在劍柄上
       P.a0 = P.a0 * (1 - e) - 0.5 * e; P.f0 = P.f0 * (1 - e) - 0.8 * e; P.a0z = P.a0z * (1 - e) + 0.5 * e;
       P.a1 = P.a1 * (1 - e) - 0.5 * e; P.f1 = P.f1 * (1 - e) - 0.8 * e; P.a1z = P.a1z * (1 - e) - 0.5 * e; P.weapX = P.weapX * (1 - e) + 2.1 * e;
       P.headX += 0.1 * e; break;
     case 'capeSwirl': if (r.cape) r.capeBoost = e; look(P, p, 0.4); break;
-    case 'wave': // wave flag / hand
+    case 'wave': // 揮動令旗或揮手
       P.a1 = P.a1 * (1 - e) + (-2.4 + Math.sin(p * TAU * 3) * 0.45) * e; P.f1 = P.f1 * (1 - e) - 0.2 * e; P.weapX = P.weapX * (1 - e) + 0.6 * e; P.headX -= 0.15 * e;
       if (r.flag) r.flagBoost = e; break;
-    case 'read': // unroll and read the memorial scroll
+    case 'read': // 展開奏卷閱讀
       P.a0 = P.a0 * (1 - e) - 0.8 * e; P.a1 = P.a1 * (1 - e) - 0.8 * e; P.a0z += 0.25 * e; P.a1z -= 0.25 * e; P.headX += 0.35 * e; P.headY += Math.sin(p * TAU * 2) * 0.15 * e; break;
-    case 'bow': // 拱手作揖 bow
+    case 'bow': // 拱手作揖
       P.chestX += 0.55 * e; P.headX += 0.25 * e; P.a0 = P.a0 * (1 - e) - 0.9 * e; P.a1 = P.a1 * (1 - e) - 0.9 * e; P.hipsY -= 0.015 * e; break;
-    case 'fan': // gently fanning with the feather fan
+    case 'fan': // 輕搖羽扇
       P.a1 = P.a1 * (1 - e) - 0.7 * e; P.f1 = P.f1 * (1 - e) - 1.7 * e; P.fan = Math.sin(p * TAU * 4) * 0.6 * e; P.headY += 0.2 * e; break;
-    case 'fanPoint': // point the fan at the battlefield
+    case 'fanPoint': // 以羽扇指向戰場
       P.a1 = P.a1 * (1 - e) - 1.4 * e; P.f1 = P.f1 * (1 - e) - 0.2 * e; P.weapX = P.weapX * (1 - e) + 0.4 * e; P.chestX += 0.08 * e; P.headX += 0.1 * e; break;
-    case 'strokeBeard': // left hand strokes the beard
+    case 'strokeBeard': // 左手撫鬚
       P.a0 = P.a0 * (1 - e) - 1.1 * e; P.f0 = P.f0 * (1 - e) - 1.75 * e; P.a0z = P.a0z * (1 - e) + 0.55 * e;
       P.f0 += Math.sin(p * TAU * 3) * 0.15 * e; P.beard = Math.sin(p * TAU * 3) * 0.12 * e; P.headX -= 0.15 * e; P.headZ += 0.08 * e; break;
     case 'ponder': P.headX -= 0.3 * e; P.headZ += 0.15 * e; P.headY += 0.3 * Math.sin(p * Math.PI) * e; break;
     case 'adjustHat': P.a0 = P.a0 * (1 - e) - 2.6 * e; P.f0 = P.f0 * (1 - e) - 0.6 * e; P.a0z = P.a0z * (1 - e) + 0.25 * e; P.headX -= 0.1 * e; if (r.wings) r.wingWobble = e; break;
-    case 'thump': { // lift halberd and strike the butt on the ground
+    case 'thump': { // 舉起長戟，以戟尾頓地
       const up = smooth(0, 0.4, p) * (1 - smooth(0.45, 0.55, p));
       P.a1 -= 0.5 * up; P.hipsY += 0.005 * up; P.chestX -= 0.05 * up;
       if (p > 0.53 && a.once('thud')) { idleHook('dust', r.weapon, r); idleHook('sound:thud', r.weapon, r); }
       break;
     }
-    case 'drill': { // spear thrust drill: two thrusts with lunge
+    case 'drill': { // 刺槍操練：弓步連刺兩下
       const t = Math.max(0, Math.sin(p * TAU * 2)) * e;
       P.a1 = P.a1 * (1 - e) - 1.3 * e - 0.3 * t; P.f1 = P.f1 * (1 - e) - 0.25 * e + 0.25 * t; P.weapX = P.weapX * (1 - e) + 1.55 * e;
       P.chestX += 0.25 * t; P.l0 -= 0.45 * t; P.k0 += 0.5 * t; P.l1 += 0.3 * t; P.hipsY -= 0.025 * t;
@@ -169,7 +171,7 @@ function applyBipedIdle(P, a, r) {
     }
     case 'attention': P.chestX -= 0.08 * e; P.headX -= 0.08 * e; P.a1 -= 0.1 * e; P.hipsY += 0.008 * e; break;
     case 'shieldUp': P.a0 = P.a0 * (1 - e) - 1.3 * e; P.f0 = P.f0 * (1 - e) - 0.9 * e; P.headX += 0.05 * e; P.chestX += 0.1 * e; P.l1 -= 0.2 * e; break;
-    case 'practice': { // broadsword practice swing
+    case 'practice': { // 揮刀練習
       const sw = Math.sin(p * TAU * 1.5);
       P.a1 = P.a1 * (1 - e) + (-1.6 + sw * 1.1) * e; P.f1 = P.f1 * (1 - e) - 0.3 * e; P.a1z += sw * 0.3 * e; P.chestY += sw * 0.25 * e; P.weapX = P.weapX * (1 - e) + 0.2 * e;
       if (Math.abs(sw) > 0.95 && a.once('s' + Math.round(p * 3))) idleHook('sound:whoosh', r.weapon, r);
@@ -182,7 +184,7 @@ function applyBipedIdle(P, a, r) {
       break;
     }
     case 'stretch': P.chestX -= 0.2 * e; P.chestY += Math.sin(p * TAU) * 0.4 * e; P.headX -= 0.2 * e; break;
-    case 'draw': { // nock and draw the bow
+    case 'draw': { // 搭箭拉弓
       const d = smooth(0.15, 0.45, p) * (1 - smooth(0.8, 0.95, p));
       P.a1 = P.a1 * (1 - d) - 1.5 * d; P.a1z += 0.2 * d; P.f1 = P.f1 * (1 - d) - 0.05 * d; P.a0 = P.a0 * (1 - d) - 1.4 * d; P.f0 = P.f0 * (1 - d) - 1.4 * d; P.a0z += 0.6 * d;
       P.chestY -= 0.35 * d; P.headY -= 0.2 * d; break;
@@ -190,12 +192,12 @@ function applyBipedIdle(P, a, r) {
     case 'checkArrow': P.a0 = P.a0 * (1 - e) - 2.2 * e; P.a0z -= 0.3 * e; P.headY -= 0.5 * e; P.headX -= 0.1 * e; break;
     case 'raiseSpear': P.a1 = P.a1 * (1 - e) - 2.6 * e; P.f1 = P.f1 * (1 - e) - 0.1 * e; P.weapX = P.weapX * (1 - e) + 0.2 * e; P.headX -= 0.15 * e; break;
     case 'patHorse': P.a0 = P.a0 * (1 - e) - 0.4 * e; P.f0 = P.f0 * (1 - e) - 0.2 * e + Math.sin(p * TAU * 3) * 0.2 * e; P.chestX += 0.25 * e; P.headX += 0.3 * e; break;
-    case 'wipe': { // cleaning the cannon barrel
+    case 'wipe': { // 擦拭砲管
       const c = p * TAU * 3;
       P.chestX += 0.35 * e; P.a0 = P.a0 * (1 - e) + (-1.0 + Math.sin(c) * 0.25) * e; P.a1 = P.a1 * (1 - e) + (-1.0 + Math.cos(c) * 0.25) * e; P.headX += 0.2 * e; break;
     }
     case 'crouch': P.hipsY -= 0.07 * e; P.l0 -= 0.75 * e; P.l1 -= 0.75 * e; P.k0 += 1.3 * e; P.k1 += 1.3 * e; P.chestX += 0.35 * e; P.headX -= 0.1 * e; break;
-    case 'lift': { // bend down, lift a stone overhead into the bucket
+    case 'lift': { // 彎腰搬石，舉過頭頂放進投石斗
       const down = smooth(0, 0.35, p) * (1 - smooth(0.4, 0.6, p)), up = smooth(0.45, 0.65, p) * (1 - smooth(0.8, 1, p));
       P.chestX += 0.7 * down; P.hipsY -= 0.07 * down; P.l0 -= 0.75 * down; P.l1 -= 0.75 * down; P.k0 += 1.3 * down; P.k1 += 1.3 * down;
       P.a0 = P.a0 * (1 - down - up) - 1.3 * down - 2.8 * up; P.a1 = P.a1 * (1 - down - up) - 1.3 * down - 2.8 * up; P.a0z += 0.3 * up; P.a1z -= 0.3 * up;
@@ -212,7 +214,7 @@ function poseBiped(r, st, br, time) {
   const twoHanded = r.role === 'official' || r.role === 'chancellor' || r.seated;
   r.flagBoost = 0; r.capeBoost = 0; r.wingWobble = 0;
   if (mode === 'walk' || mode === 'gallop') {
-    // natural gait: hip swing + knee flex in swing phase, double bob per cycle, pelvis sway, counter-twist, arm swing
+    // 一般步態：髖部擺動、擺動期屈膝、每週期上下起伏兩次、骨盆擺動、反向扭轉、擺臂
     const s = Math.sin(w), c = Math.cos(w), amp = st.amp ?? 1, spd = st.speed ?? 0.6;
     const hipAmp = (0.32 + 0.22 * spd) * amp;
     P.l0 = -s * hipAmp; P.l1 = s * hipAmp;
@@ -227,6 +229,31 @@ function poseBiped(r, st, br, time) {
       else P.a1 += -s * 0.12 * amp;
     }
     if (r.skirt) P.k0 = P.k1 = 0.04;
+  } else if (mode === 'gait') {
+    // 真人步態：st.walk 為步態相位（2π = 左右各一步），左腿 u = 0 時腳跟著地、u = 0.25 時單腳支撐於正下方
+    const amp = st.amp ?? 1, spd = st.speed ?? 0.6, A = (0.36 + 0.12 * spd) * amp;
+    const uL = (((w / TAU) % 1) + 1) % 1, uR = (uL + 0.5) % 1;
+    const hipOf = u => -A * Math.cos(TAU * u);                          // 前擺為負
+    const kneeOf = u => {                                                // 承重期小彎、擺動期大彎、著地前伸直
+      let k = 0.05;
+      if (u < 0.15) k += 0.22 * Math.sin(Math.PI * u / 0.15);
+      else if (u > 0.5) k += (0.95 + 0.25 * spd) * Math.pow(Math.sin(Math.PI * Math.min(1, (u - 0.5) / 0.45)), 1.3);
+      return k * amp;
+    };
+    P.l0 = hipOf(uL); P.l1 = hipOf(uR); P.k0 = kneeOf(uL); P.k1 = kneeOf(uR);
+    P.hipsY += (-Math.cos(4 * Math.PI * uL) * 0.012 - 0.006) * amp;     // 雙腳著地最低、單腳支撐最高
+    P.hipsZ = Math.sin(TAU * uL) * 0.04 * amp;                           // 骨盆左右下沉
+    P.chestY = Math.sin(TAU * uL + Math.PI) * 0.09 * amp;                // 肩與骨盆反向扭轉
+    P.chestZ = -P.hipsZ * 0.5;
+    P.headZ = -P.hipsZ * 0.7; P.headY = -P.chestY * 0.7;                 // 頭部保持穩定
+    P.chestX = (0.03 + 0.07 * spd) * amp + (st.lean || 0);
+    if (!twoHanded) {
+      const sw = Math.cos(TAU * uL) * (0.32 + 0.1 * spd) * amp;         // 手臂與同側腿反向擺動
+      if (r.role !== 'marshal' && r.role !== 'marshalFlag') { P.a0 = P.a0 * (1 - amp) + sw; P.f0 = P.f0 * (1 - amp) + (-0.22 - Math.max(0, -sw) * 0.5); }
+      if (P.weapX === 0 || r.role === 'archer' || r.role === 'loader') { P.a1 = P.a1 * (1 - amp) - sw; P.f1 = P.f1 * (1 - amp) + (-0.22 - Math.max(0, sw) * 0.5); }
+      else P.a1 += -sw * 0.25;
+    }
+    if (r.skirt) { P.k0 *= 0.5; P.k1 *= 0.5; }
   } else if (mode === 'windup') {
     P.a1 = -2.6 * a; P.f1 = -0.6 * a; P.a1z = -0.3 * a; P.chestX = -0.25 * a; P.l0 = 0.3 * a; P.l1 = -0.25 * a;
     P.a0 = 0.6 * a; P.headX = -0.15 * a; P.weapX *= (1 - a);
@@ -242,15 +269,15 @@ function poseBiped(r, st, br, time) {
   } else if (mode === 'guard') {
     if (!twoHanded) { P.a0 = -1.0; P.f0 = -1.2; P.a1 = -0.9; P.f1 = -0.9; P.weapX = 1.2; }
     P.chestX = 0.1; P.l0 = 0.2; P.l1 = -0.15; P.headX = -0.05;
-  } else if (mode === 'hold') { // choreography in control: rest stance, no idle behaviour
-  } else { // idle — breathing sway + role behaviour
+  } else if (mode === 'hold') { // 由編排控制：維持站姿，不執行待機動作
+  } else { // 待機：呼吸起伏 + 身分動作
     P.headY += Math.sin(time * 0.37 + r.seed) * 0.12;
     P.chestZ += Math.sin(time * 0.5 + r.seed) * 0.015;
     const act = scheduler(r, time, BIPED_IDLE[r.role] || [['look', 3], ['shift', 2.4]]);
     if (act) applyBipedIdle(P, act, r);
   }
-  if (st.add) for (const k in st.add) if (k in P) P[k] += st.add[k];   // choreography offsets (lean, crouch…)
-  if (r.seated) { P.hipsY = 0.36; P.l0 = -1.25; P.l1 = -1.25; P.l0z = -0.42; P.l1z = 0.42; P.k0 = P.k1 = 1.15; P.hipsZ = 0; }
+  if (st.add) for (const k in st.add) if (k in P) P[k] += st.add[k];   // 編排加上的位移（前傾、下蹲…）
+  if (r.seated) { P.hipsY = HIP; P.l0 = -1.25; P.l1 = -1.25; P.l0z = -0.42; P.l1z = 0.42; P.k0 = P.k1 = 1.15; P.hipsZ = 0; }
   const [L, Rl] = r.legs, [LA, RA] = r.arms;
   r.hips.position.y = P.hipsY + br * 0.004;
   r.hips.rotation.z = P.hipsZ;
@@ -268,7 +295,7 @@ function poseBiped(r, st, br, time) {
   if (r.cape) r.cape.rotation.x = 0.15 + (mode === 'walk' || mode === 'gallop' ? 0.45 : 0) + Math.sin(time * 3 + r.seed) * 0.05 + (mode === 'strike' ? 0.6 * a : 0) + r.capeBoost * (0.5 + Math.sin(time * 9) * 0.25);
   if (r.plume) r.plume.rotation.x = Math.sin(time * 4 + r.seed) * 0.08 + (mode === 'walk' ? 0.2 : 0);
   if (r.flag) r.flag.rotation.y = Math.sin(time * 3 + r.seed) * 0.35 + r.flagBoost * Math.sin(time * 14) * 0.6;
-  if (r.pauldrons) { // damped spring: kicked on foot contact, settles in ~0.3 s
+  if (r.pauldrons) { // 阻尼彈簧：腳著地時受力，約 0.3 秒回穩
     const sp = r.pSpring ??= { x: 0, v: 0, t: time };
     const dt = Math.min(0.05, Math.max(0, time - sp.t)); sp.t = time;
     if (st.kick) { sp.v += st.kick; st.kick = 0; }
@@ -278,7 +305,7 @@ function poseBiped(r, st, br, time) {
   if (r.wings) r.wings.rotation.z = Math.sin(time * 3 + r.seed) * 0.02 + r.wingWobble * Math.sin(time * 18) * 0.06;
 }
 
-/* ============================== horses & elephants ============================== */
+/* ============================== 馬與象 ============================== */
 const QUAD_IDLE = {
   horse: [['tailSwish', 2.0], ['paw', 2.2], ['headToss', 1.8], ['graze', 4.0], ['earTwitch', 1.4], ['restLeg', 3.2], ['snort', 1.2], ['look', 3]],
   drafthorse: [['tailSwish', 2.0], ['paw', 2.2], ['headToss', 1.8], ['earTwitch', 1.4], ['snort', 1.2]],
@@ -298,7 +325,7 @@ function poseQuad(r, st, br, time) {
     const ph = [0, 0.4, Math.PI, Math.PI + 0.4];
     r.legs.forEach((l, i) => { const s = Math.sin(w + ph[i]); P.legs[i] = [s * 0.85, Math.max(0, Math.cos(w + ph[i])) * (l.front ? -1.0 : 0.9)]; });
     P.bodyX = Math.sin(w) * 0.12; P.bodyY += Math.max(0, Math.sin(w)) * 0.07; P.neckX = -Math.sin(w) * 0.2; P.headY = 0; P.tailX = -0.5;
-  } else if (mode === 'windup') { // rear up
+  } else if (mode === 'windup') { // 人立而起
     P.bodyX = -0.75 * a * (elephant ? 0.6 : 1); P.bodyY += 0.08 * a; P.neckX = -0.3 * a; P.headY = 0;
     P.legs = [[-1.1 * a, -0.9 * a], [-0.8 * a, -1.1 * a], [0.6 * a, 0.2 * a], [0.6 * a, 0.2 * a]]; P.tailY = 0;
     P.trunk = -1.2 * a; P.earFlap = 0.8 * a;
@@ -317,14 +344,14 @@ function poseQuad(r, st, br, time) {
     P.neckX = -0.15; P.headY = 0; P.earL = P.earR = -0.4; P.trunk = -0.3; P.earFlap = 0.5;
   } else if (mode === 'hold') {
   } else {
-    // idle: continuous natural motion
+    // 待機：持續的自然小動作
     if (elephant) { P.bodyZ = Math.sin(time * 0.7 + r.seed) * 0.02; P.earFlap = 0.15; }
     const act = scheduler(r, time, QUAD_IDLE[r.role] || QUAD_IDLE.horse);
     if (act) applyQuadIdle(P, act, r, time);
   }
   if (st.add) { for (const k in st.add) if (k in P && typeof P[k] === 'number') P[k] += st.add[k];
     if (st.add.legs) st.add.legs.forEach((l, i) => { if (l) { P.legs[i][0] += l[0]; P.legs[i][1] += l[1]; } }); }
-  // apply
+  // 套用到骨架
   r.body.position.y = P.bodyY + br * 0.003;
   r.body.rotation.set(P.bodyX, 0, P.bodyZ);
   r.body.scale.set(1 + br * 0.015, 1 + br * 0.018, 1);
@@ -351,7 +378,7 @@ function applyQuadIdle(P, act, r, time) {
   const { p, env: e } = act;
   switch (act.name) {
     case 'tailSwish': P.tailY = Math.sin(p * TAU * 3) * 0.9 * e; P.tailX = 0.4 * e; break;
-    case 'paw': { // paw the ground with a front hoof
+    case 'paw': { // 以前蹄刨地
       const k = Math.max(0, Math.sin(p * TAU * 2));
       P.legs[1] = [-0.7 * k * e, -1.4 * k * e]; P.neckX += 0.15 * e; P.headX += 0.1 * e;
       if (k < 0.05 && p > 0.2 && act.once('d' + Math.round(p * 2))) { idleHook('dust', r.legs[1].knee, r); idleHook('sound:hoof', r.legs[1].knee, r); }
@@ -364,7 +391,7 @@ function applyQuadIdle(P, act, r, time) {
     case 'snort': P.headX += Math.sin(p * TAU * 2) * 0.15 * e; P.neckX -= 0.1 * e; if (p > 0.3 && act.once('s')) { idleHook('sound:snort', r.head, r); idleHook('breath', r.head, r); } break;
     case 'look': P.headY += Math.sin(p * TAU) * 0.6 * e; P.neckX -= 0.1 * e; break;
     case 'trunkCurl': P.trunk = -2.6 * e; P.trunkWave = 1 - e * 0.5; P.headX -= 0.1 * e; break;
-    case 'trunkRaise': // raise trunk and trumpet
+    case 'trunkRaise': // 高舉象鼻長鳴
       P.trunk = -4.2 * e; P.neckX -= 0.25 * e; P.headX -= 0.2 * e; P.earFlap = 0.9 * e; P.trunkWave = 1 - e;
       if (p > 0.35 && act.once('t')) idleHook('sound:trumpet', r.head, r); break;
     case 'stomp': {
@@ -374,7 +401,7 @@ function applyQuadIdle(P, act, r, time) {
       break;
     }
     case 'earFlap': P.earFlap = 0.9 * e; break;
-    case 'dustBath': { // toss dust over the back with the trunk
+    case 'dustBath': { // 用象鼻把塵土甩到背上
       const toss = smooth(0.4, 0.6, p);
       P.trunk = (1.2 * (1 - toss) - 3.6 * toss) * e; P.neckX += 0.25 * e * (1 - toss);
       if (p > 0.58 && act.once('d')) idleHook('dustUp', r.head, r);
@@ -384,7 +411,7 @@ function applyQuadIdle(P, act, r, time) {
   }
 }
 
-/* ============================== war machines ============================== */
+/* ============================== 戰車與砲 ============================== */
 function poseCannon(r, st, time) {
   const mode = st.mode, w = st.walk || 0, a = st.act || 0;
   r.wheels.forEach(wh => { wh.rotation.x = -(st.dist || 0) / (r.wheelR * (st.scale || 1.5)); });
@@ -443,7 +470,7 @@ function poseChariot(r, st, time) {
   if (r.horse) poseRig(r.horse, { mode: mode === 'walk' || mode === 'gallop' ? 'gallop' : mode, walk: w, act: a, speed: st.speed, amp: st.amp }, time);
 }
 
-/* ------------------------------ particles ------------------------------ */
+/* ------------------------------ 粒子特效 ------------------------------ */
 export class Particles {
   constructor(scene) {
     this.scene = scene; this.items = [];

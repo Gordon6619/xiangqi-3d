@@ -1,4 +1,4 @@
-// 3D 場景 — renderer, PBR lighting, wooden board, table, markers, camera fitting for responsive layouts
+// 3D 場景 — 算繪器、PBR 打光、木製棋盤、桌面、標記，以及因應各種螢幕比例的鏡頭取景
 import * as THREE from 'three';
 import { OrbitControls } from '../vendor/OrbitControls.js';
 import { RoomEnvironment } from '../vendor/RoomEnvironment.js';
@@ -87,7 +87,7 @@ export class Stage {
   boardTexture(style) {
     const S = 2048, cv = document.createElement('canvas'); cv.width = S; cv.height = Math.round(S * 11 / 10);
     const g = cv.getContext('2d'), W = cv.width, H = cv.height;
-    // wood/stone base
+    // 木紋／石紋底
     g.fillStyle = style.base; g.fillRect(0, 0, W, H);
     if (style === BOARD_STYLES.marble) {
       for (let i = 0; i < 60; i++) {
@@ -106,8 +106,8 @@ export class Stage {
       }
       if (style === BOARD_STYLES.bamboo) for (let x = 0; x < W; x += W / 12) { g.fillStyle = 'rgba(80,60,20,0.18)'; g.fillRect(x, 0, 6, H); }
     }
-    // grid: 9 files x 10 ranks inside margin of 1 cell
-    const cell = W / 10, ox = cell, oy = cell; // board plane is 10 x 11 units
+    // 格線：9 行 × 10 列，四周留一格邊距
+    const cell = W / 10, ox = cell, oy = cell; // 棋盤平面為 10 × 11 單位
     const X = c => ox + c * cell, Y = r => oy + r * cell;
     g.strokeStyle = style.line; g.lineCap = 'round';
     g.lineWidth = 10; g.strokeRect(X(0) - 22, Y(0) - 22, 8 * cell + 44, 9 * cell + 44);
@@ -117,11 +117,11 @@ export class Stage {
       g.beginPath(); g.moveTo(X(c), Y(0)); g.lineTo(X(c), Y(c === 0 || c === 8 ? 9 : 4)); g.stroke();
       if (c > 0 && c < 8) { g.beginPath(); g.moveTo(X(c), Y(5)); g.lineTo(X(c), Y(9)); g.stroke(); }
     }
-    // palaces
+    // 九宮
     [[0, 2], [7, 9]].forEach(([a, b]) => {
       g.beginPath(); g.moveTo(X(3), Y(a)); g.lineTo(X(5), Y(b)); g.moveTo(X(5), Y(a)); g.lineTo(X(3), Y(b)); g.stroke();
     });
-    // position marks for cannons & soldiers
+    // 砲位與兵位的十字標記
     const mark = (r, c) => {
       const d = 14, l = 30;
       [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sy]) => {
@@ -131,7 +131,7 @@ export class Stage {
     };
     [[2, 1], [2, 7], [7, 1], [7, 7]].forEach(([r, c]) => mark(r, c));
     for (let c = 0; c < 9; c += 2) { mark(3, c); mark(6, c); }
-    // river text 楚河 漢界
+    // 河界文字：楚河 漢界
     g.fillStyle = style.line; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.font = `bold ${cell * 0.62}px "BiauKai","DFKai-SB","KaiTi","STKaiti","Noto Serif TC","Noto Serif CJK TC","WenQuanYi Zen Hei",serif`;
     const ry = (Y(4) + Y(5)) / 2;
@@ -156,11 +156,11 @@ export class Stage {
        new THREE.MeshPhysicalMaterial({ color: style.frame, roughness: 0.4, clearcoat: 0.8 }), new THREE.MeshPhysicalMaterial({ color: style.frame, roughness: 0.4, clearcoat: 0.8 })]);
     top.position.y = -0.15; top.receiveShadow = true; top.castShadow = true;
     this.boardGroup.add(top);
-    // frame moulding
+    // 邊框線腳
     const fm = new THREE.MeshPhysicalMaterial({ color: style.frame, roughness: 0.35, clearcoat: 1, metalness: 0.05 });
     [[0, -5.6, 10.6, 0.25], [0, 5.6, 10.6, 0.25]].forEach(([x, z, w, d]) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.38, d), fm); m.position.set(x, -0.13, z); m.castShadow = m.receiveShadow = true; this.boardGroup.add(m); });
     [[-5.15, 0], [5.15, 0]].forEach(([x, z]) => { const m = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.38, 11.45), fm); m.position.set(x, -0.13, z); m.castShadow = m.receiveShadow = true; this.boardGroup.add(m); });
-    // invisible click plane
+    // 看不見的點擊平面
     this.pickPlane = new THREE.Mesh(new THREE.PlaneGeometry(10, 11), new THREE.MeshBasicMaterial({ visible: false }));
     this.pickPlane.rotation.x = -Math.PI / 2; this.pickPlane.position.y = 0.01;
     this.boardGroup.add(this.pickPlane);
@@ -178,7 +178,7 @@ export class Stage {
     this.lastGroup = new THREE.Group(); this.scene.add(this.lastGroup);
   }
   clearMarkers() { this.markerGroup.clear(); }
-  showTargets(list) { // list of {r,c,capture}
+  showTargets(list) { // 清單：{r, c, capture}
     this.clearMarkers();
     for (const t of list) {
       const m = t.capture ? new THREE.Mesh(this.ringGeo, this.capMat) : new THREE.Mesh(this.dotGeo, this.dotMat);
@@ -202,12 +202,6 @@ export class Stage {
     }
   }
   showCheck(pos) {
-    if (this.landFrame?.userData.anim) { const k = Math.min(1, (Clock.now() - this.landFrame.userData.anim) / 140); this.landFrame.scale.setScalar(1.18 - 0.18 * (1 - Math.pow(1 - k, 3))); this.landFrame.material.opacity = 0.85 * k; if (k >= 1) this.landFrame.userData.anim = 0; }
-    if (this.seal) { // 印記浮出：rises, stamps down to size, then breathes
-      const k = Math.min(1, (Clock.now() - this.seal.userData.born) / 220);
-      this.seal.material.opacity = 0.95 * k; this.seal.scale.setScalar(1.35 - 0.35 * (1 - Math.pow(1 - k, 3)) + (k >= 1 ? Math.sin(time * 4) * 0.03 : 0));
-      this.seal.position.y = 0.018 + 0.05 * (1 - k);
-    }
     if (this.checkRing) { this.scene.remove(this.checkRing); this.checkRing = null; }
     if (!pos) return;
     const m = new THREE.Mesh(this.ringGeo, this.checkMat); m.rotation.x = Math.PI / 2; m.position.copy(pos); m.position.y = 0.06;
@@ -221,7 +215,7 @@ export class Stage {
     const disc = new THREE.Mesh(new THREE.CircleGeometry(0.3, 48), new THREE.MeshBasicMaterial({ color: 0xffb030, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
     [ring, disc].forEach(m => { m.rotation.x = -Math.PI / 2; g.add(m); });
     g.position.set(pos.x, 0.02, pos.z); g.renderOrder = 3;
-    // a single opacity drives both layers
+    // 一個透明度同時控制光圈兩層
     const mat = { set opacity(v) { ring.material.opacity = v; disc.material.opacity = v * 0.45; }, get opacity() { return ring.material.opacity; } };
     g.material = mat;
     this.scene.add(g);
@@ -262,19 +256,19 @@ export class Stage {
   }
   clearSeal() { if (this.seal) { this.scene.remove(this.seal); this.seal.material.map.dispose(); this.seal.material.dispose(); this.seal.geometry.dispose(); this.seal = null; } }
 
-  /* camera framing that keeps the whole board visible on any aspect ratio */
+  /* 鏡頭取景：任何螢幕比例都能看到整個棋盤 */
   fitCamera(animate = false) {
     const w = this.container.clientWidth, h = this.container.clientHeight, aspect = w / h;
     this.camera.aspect = aspect;
     const portrait = aspect < 0.9;
     this.camera.fov = portrait ? 50 : 40;
-    // keep the board centred in the area not covered by the desktop side panel
+    // 讓棋盤置中於桌機側欄沒有遮住的區域
     const wide = w > 820 && h > 520;
-    const right = wide ? 290 : 0, left = wide ? (this.leftInset || 0) : 0;   // side panels covering the canvas
+    const right = wide ? 290 : 0, left = wide ? (this.leftInset || 0) : 0;   // 蓋在畫布上的左右面板
     if (right || left) this.camera.setViewOffset(w, h, (right - left) / 2, 0, w, h); else this.camera.clearViewOffset();
     const effW = w - right - left;
     this.camera.updateProjectionMatrix();
-    const polar = portrait ? 0.38 : 0.62;               // more top-down on phones
+    const polar = portrait ? 0.38 : 0.62;               // 手機上改用較俯視的角度
     const vfov = THREE.MathUtils.degToRad(this.camera.fov);
     const hfov = 2 * Math.atan(Math.tan(vfov / 2) * (effW / h));
     const needH = 11.6 * Math.cos(polar) + 1.5, needW = 10.6;
@@ -316,7 +310,7 @@ export class Stage {
       else m.scale.setScalar(1 + Math.sin(time * 5 + m.userData.pulse) * 0.12);
     });
     if (this.landFrame?.userData.anim) { const k = Math.min(1, (Clock.now() - this.landFrame.userData.anim) / 140); this.landFrame.scale.setScalar(1.18 - 0.18 * (1 - Math.pow(1 - k, 3))); this.landFrame.material.opacity = 0.85 * k; if (k >= 1) this.landFrame.userData.anim = 0; }
-    if (this.seal) { // 印記浮出：rises, stamps down to size, then breathes
+    if (this.seal) { // 印記浮出：升起、蓋印縮回原尺寸，之後輕微呼吸
       const k = Math.min(1, (Clock.now() - this.seal.userData.born) / 220);
       this.seal.material.opacity = 0.95 * k; this.seal.scale.setScalar(1.35 - 0.35 * (1 - Math.pow(1 - k, 3)) + (k >= 1 ? Math.sin(time * 4) * 0.03 : 0));
       this.seal.position.y = 0.018 + 0.05 * (1 - k);

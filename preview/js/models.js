@@ -1,11 +1,11 @@
-// 程序化 3D 角色/動物模型 — procedural rigged figures that follow the literal meaning of each piece's character.
+// 程序化 3D 角色／動物模型 — 依每顆棋子棋字的本義塑造、帶骨架的人物與器物。
 //   帥/將 元帥將軍   仕 文官   士 謀士   相 宰相   象 戰象   傌 騎兵(人+馬)   馬 戰馬
 //   俥 戰車(人立車上)   車 馬拉戰車   炮 火砲(火字旁)   砲 投石機(石字旁)   兵 長槍兵   卒 刀盾步卒
-// Each model returns a Group with userData.rig: an articulated skeleton + role the animator poses.
+// 每個模型回傳一個 Group，userData.rig 為可動骨架與身分，供動畫系統擺姿。
 import * as THREE from 'three';
 import { NAMES } from './rules.js';
 
-/* ----------------------------- shared textures ----------------------------- */
+/* ----------------------------- 共用貼圖 ----------------------------- */
 const texCache = {};
 function canvasTex(key, w, h, draw, srgb = true) {
   if (texCache[key]) return texCache[key];
@@ -27,7 +27,7 @@ export function furBump() {
     }
   }, false);
 }
-function skinBump() { // wrinkled elephant hide
+function skinBump() { // 有皺褶的象皮
   return canvasTex('hide', 256, 256, (g, w, h) => {
     g.fillStyle = '#808080'; g.fillRect(0, 0, w, h);
     for (let i = 0; i < 700; i++) {
@@ -44,7 +44,7 @@ function fabricBump() {
     for (let x = 0; x < w; x += 2) { g.fillStyle = 'rgba(0,0,0,0.12)'; g.fillRect(x, 0, 1, h); }
   }, false);
 }
-function scaleBump() { // lamellar armour plates 鱗甲
+function scaleBump() { // 鱗甲甲片
   return canvasTex('lamellar', 128, 128, (g, w, h) => {
     g.fillStyle = '#909090'; g.fillRect(0, 0, w, h);
     for (let y = 0; y < h; y += 12) for (let x = (y / 12) % 2 ? 0 : 8; x < w; x += 16) {
@@ -62,7 +62,7 @@ function woodTex(seed = 0, base = '#7a3b1d', dark = '#4a200d') {
   });
 }
 const FONT = '"BiauKai","DFKai-SB","KaiTi","STKaiti","Kaiti TC","Noto Serif TC","Noto Serif CJK TC","PMingLiU","WenQuanYi Zen Hei",serif';
-function emblemTex(ch, color) { // 號衣 — the character sewn on a soldier's tabard
+function emblemTex(ch, color) { // 號衣：縫在士兵胸前的棋字
   return canvasTex('emb' + ch + color, 128, 128, (g) => {
     g.beginPath(); g.arc(64, 64, 60, 0, 7); g.fillStyle = '#f3e6c4'; g.fill();
     g.lineWidth = 6; g.strokeStyle = color; g.stroke();
@@ -78,14 +78,14 @@ function flagTex(ch, bg, fg) { // 帥旗 / 令旗
   });
 }
 
-/* ------------------------------ materials ------------------------------ */
+/* ------------------------------ 材質 ------------------------------ */
 const hex = c => '#' + c.toString(16).padStart(6, '0');
 const M = {
   std: (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness: o.r ?? 0.6, metalness: o.m ?? 0, ...o.extra }),
   phys: (color, o = {}) => new THREE.MeshPhysicalMaterial({ color, roughness: o.r ?? 0.4, metalness: o.m ?? 0, clearcoat: o.cc ?? 0, clearcoatRoughness: 0.2, sheen: o.sheen ?? 0, sheenColor: new THREE.Color(o.sheenColor ?? 0xffffff), sheenRoughness: 0.6, ...o.extra }),
   fur: (color, r = 0.85) => new THREE.MeshStandardMaterial({ color, roughness: r, bumpMap: furBump(), bumpScale: 0.6 }),
   hide: (color) => new THREE.MeshStandardMaterial({ color, roughness: 0.95, bumpMap: skinBump(), bumpScale: 1.2 }),
-  coat: (color) => new THREE.MeshPhysicalMaterial({ color, roughness: 0.42, sheen: 0.6, sheenColor: new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.4), clearcoat: 0.25, bumpMap: furBump(), bumpScale: 0.25 }), // glossy horse coat
+  coat: (color) => new THREE.MeshPhysicalMaterial({ color, roughness: 0.42, sheen: 0.6, sheenColor: new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.4), clearcoat: 0.25, bumpMap: furBump(), bumpScale: 0.25 }), // 帶光澤的馬毛
   metal: (color, r = 0.28) => new THREE.MeshStandardMaterial({ color, roughness: r, metalness: 1 }),
   armor: (color) => new THREE.MeshStandardMaterial({ color, roughness: 0.32, metalness: 0.9, bumpMap: scaleBump(), bumpScale: 0.8 }),
   cloth: (color) => new THREE.MeshPhysicalMaterial({ color, roughness: 0.75, sheen: 1, sheenColor: new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.5), sheenRoughness: 0.5, bumpMap: fabricBump(), bumpScale: 0.3, side: THREE.DoubleSide }),
@@ -119,7 +119,7 @@ function addEyes(head, r, spread, y, z) {
   return eyes;
 }
 
-/** Character emblem (棋字) on the figure body, facing outward along +z of `parent` space after rotY. */
+/** 印在身上的棋字，旋轉 rotY 後朝 `parent` 空間的 +z 方向向外。 */
 function emblem(parent, ch, color, x, y, z, rotY, r = 0.06) {
   const tex = emblemTex(ch, color);
   const m = new THREE.Mesh(new THREE.CircleGeometry(r, 32), new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: 0x3a3a3a, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -2 }));
@@ -128,7 +128,21 @@ function emblem(parent, ch, color, x, y, z, rotY, r = 0.06) {
   return m;
 }
 
-/* ------------------------------ palettes ------------------------------ */
+/* ------------------------------ 寫實比例常數 ------------------------------ */
+// 人物約七頭身：臀高 0.47、全身約 1.0（模型單位）。所有人物在棋盤上縮放到約 1.1 格高，
+// 騎兵、砲手、車夫等「乘員」也換算成同樣的實際身高，讓人、馬、車、砲彼此比例一致。
+export const HIP = 0.47;
+export const HUMAN_WORLD = 1.1;            // 人物在棋盤上的高度（格）
+const MODEL_SCALE = {                      // 各造型的整體縮放
+  cavalry: 1.8, cavalryWhite: 1.8, cavalryRed: 1.8, cavalryBlack: 1.8,
+  warElephant: 1.6, elephant: 1.6,
+  chariot: 1.5, horseChariot: 1.35,
+  cannon: 1.8, catapult: 1.75,
+};
+const scaleOf = model => MODEL_SCALE[model] ?? HUMAN_WORLD;
+const crewScale = model => HUMAN_WORLD / scaleOf(model);   // 乘員在父模型內的縮放
+
+/* ------------------------------ 配色 ------------------------------ */
 export const PALETTES = {
   red: {
     crimson: { name: '朱紅金甲', primary: 0xa3161b, secondary: 0xe8b84a, metal: 0xd9a441, cloth: 0x8e0f16, robe: 0x7a1020, text: '#b3121a', rim: 0xb3121a },
@@ -142,7 +156,7 @@ export const PALETTES = {
   },
 };
 
-/* --------------- catalogue: options per side/type follow the character's meaning --------------- */
+/* --------------- 造型目錄：每一方、每種棋子的選項都依棋字本義 --------------- */
 export const MODEL_NAMES = {
   marshal: '元帥（持劍披風）', marshalHalberd: '元帥（方天畫戟）', marshalFlag: '元帥（揮令旗）',
   official: '文官（手捧奏卷）', strategist: '謀士（羽扇綸巾）', guard: '御前衛士（持戟）',
@@ -152,7 +166,7 @@ export const MODEL_NAMES = {
   cannon: '銅火砲', catapult: '投石機',
   spearman: '長槍兵', swordsman: '刀盾步卒', archer: '弓箭手',
 };
-// 1 = red, -1 = black. First entry is the literal default.
+// 1 為紅方、-1 為黑方；每組第一個是依字義的預設造型。
 export const MODEL_OPTIONS = {
   K: { 1: ['marshal', 'marshalHalberd', 'marshalFlag'], [-1]: ['marshal', 'marshalHalberd', 'marshalFlag'] },
   A: { 1: ['official', 'guard', 'strategist'], [-1]: ['strategist', 'guard', 'official'] },
@@ -175,7 +189,7 @@ export function defaultMap(side) {
   const m = {}; for (const k in MODEL_OPTIONS) m[k] = MODEL_OPTIONS[k][side][0]; return m;
 }
 
-/* ------------------------------ disc base ------------------------------ */
+/* ------------------------------ 棋子貼圖（字牌） ------------------------------ */
 function charTexture(ch, color) {
   return canvasTex('ch' + ch + color, 256, 256, (g, w, h) => {
     const grd = g.createRadialGradient(w / 2, h / 2, 10, w / 2, h / 2, w / 2);
@@ -213,7 +227,7 @@ function makeDisc(side, type, pal, withFigure) {
   return g;
 }
 
-/* ------------------------------ biped (human) rig ------------------------------ */
+/* ------------------------------ 人物骨架 ------------------------------ */
 function biped(o) {
   const root = new THREE.Group();
   const skin = M.skin(o.skin ?? 0xe0b48c);
@@ -222,28 +236,28 @@ function biped(o) {
   const metal = M.metal(o.metal);
   const armorMat = M.armor(o.metal);
   const dark = M.std(0x2a1c12, { r: 0.7 });
-  const hips = pivot(root, 0, 0.36, 0);
+  const hips = pivot(root, 0, HIP, 0);
   const rig = { kind: 'biped', role: o.role || 'soldier', root, hips, legs: [], arms: [] };
   rig.knees = [];
   [-1, 1].forEach(s => {
     const hp = pivot(hips, s * 0.07, 0, 0);
     const legMat = o.robe ? prim : M.phys(o.secondary, { r: 0.6 });
-    mesh(cap(0.047, 0.1), legMat, 0, -0.085, 0, hp);              // thigh
-    const kn = pivot(hp, 0, -0.17, 0);                              // knee joint
-    mesh(cap(0.04, 0.1), legMat, 0, -0.07, 0, kn);                  // shin
-    if (o.armor) mesh(cyl(0.046, 0.042, 0.07, 12), armorMat, 0, -0.07, 0.005, kn); // greave
-    mesh(new THREE.BoxGeometry(0.08, 0.05, 0.13), dark, 0, -0.165, 0.025, kn);    // boot
+    mesh(cap(0.047, 0.13), legMat, 0, -0.105, 0, hp);             // 大腿
+    const kn = pivot(hp, 0, -0.22, 0);                              // 膝關節
+    mesh(cap(0.039, 0.13), legMat, 0, -0.09, 0, kn);                // 小腿
+    if (o.armor) mesh(cyl(0.045, 0.041, 0.09, 12), armorMat, 0, -0.08, 0.005, kn); // 護脛
+    mesh(new THREE.BoxGeometry(0.075, 0.045, 0.13), dark, 0, -0.218, 0.025, kn);  // 靴
     rig.legs.push(hp); rig.knees.push(kn);
   });
   if (o.robe) {
     const skirt = pivot(hips, 0, 0, 0); rig.skirt = skirt;
-    mesh(new THREE.CylinderGeometry(0.1, 0.2, 0.36, 28, 1, true), prim, 0, -0.15, 0, skirt);
-    mesh(new THREE.TorusGeometry(0.2, 0.008, 6, 28), M.metal(o.secondary), 0, -0.33, 0, skirt).rotation.x = Math.PI / 2;
+    mesh(new THREE.CylinderGeometry(0.1, 0.21, 0.46, 28, 1, true), prim, 0, -0.2, 0, skirt);
+    mesh(new THREE.TorusGeometry(0.21, 0.008, 6, 28), M.metal(o.secondary), 0, -0.43, 0, skirt).rotation.x = Math.PI / 2;
   }
   const chest = pivot(hips, 0, 0.04, 0); rig.chest = chest;
   mesh(cap(0.12, 0.16), prim, 0, 0.16, 0, chest).scale.set(1, 1, 0.75);
   mesh(cyl(0.125, 0.125, 0.05), M.std(o.robe ? o.secondary : 0x3a2412, { r: 0.5 }), 0, 0.04, 0, chest);
-  if (o.robe) { // wide sleeves' collar 交領
+  if (o.robe) { // 廣袖的交領
     const col = mesh(new THREE.TorusGeometry(0.075, 0.012, 6, 20, Math.PI), M.silk(o.secondary), 0, 0.27, 0.05, chest); col.rotation.set(-0.9, 0, Math.PI);
   }
   let frontZ = 0.092;
@@ -254,11 +268,11 @@ function biped(o) {
     mesh(new THREE.CylinderGeometry(0.13, 0.17, 0.12, 20, 1, true), armorMat, 0, -0.03, 0, chest);
     frontZ = 0.118;
   }
-  if (o.pauldrons && !o.armor) { // leather shoulder guards 皮肩甲 that settle after each step
+  if (o.pauldrons && !o.armor) { // 皮肩甲：每一步落地後會輕晃回穩
     const lm = M.std(0x4a2e1a, { r: 0.55, extra: { bumpMap: scaleBump(), bumpScale: 0.4 } });
     rig.pauldrons = [-1, 1].map(s => { const pv = pivot(chest, s * 0.13, 0.31, 0); const pad = mesh(sph(0.07, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.6), lm, s * 0.025, -0.025, 0, pv); pad.scale.set(1, 0.8, 1.05); return pv; });
   }
-  if (o.emblem) { // 棋字 on chest and back so it reads from either side of the board
+  if (o.emblem) { // 棋字印在胸前與背後，從棋盤兩側都看得到
     const ey = o.armor ? 0.15 : 0.16;
     emblem(chest, o.emblem, o.emblemColor, 0, ey, frontZ + 0.006, 0, 0.075);
     if (!o.cape) emblem(chest, o.emblem, o.emblemColor, 0, ey, -frontZ - 0.006, Math.PI, 0.075);
@@ -268,10 +282,10 @@ function biped(o) {
     const c = mesh(new THREE.PlaneGeometry(0.32, 0.52, 6, 8), M.cloth(o.cloth), 0, -0.26, 0, cp); c.rotation.x = 0.12;
     if (o.emblem) emblem(c, o.emblem, o.emblemColor, 0, 0.05, -0.004, Math.PI, 0.1);
   }
-  // head
+  // 頭部
   const neck = pivot(chest, 0, 0.32, 0); rig.head = neck;
   mesh(cyl(0.04, 0.045, 0.06), skin, 0, 0.02, 0, neck);
-  const head = mesh(sph(0.095, 28, 20), skin, 0, 0.12, 0.005, neck); head.scale.set(0.95, 1.05, 1);
+  const head = mesh(sph(0.095, 28, 20), skin, 0, 0.1, 0.005, neck); head.scale.set(0.95 * 0.78, 1.05 * 0.78, 0.78); // 頭縮小到約七頭身
   rig.eyes = addEyes(head, 0.014, 0.035, 0.012, 0.082);
   [-1, 1].forEach(s => { const br = mesh(new THREE.BoxGeometry(0.03, 0.006, 0.006), M.std(0x1b120c), s * 0.035, 0.035, 0.087, head); br.rotation.z = s * -0.2; });
   mesh(sph(0.014, 8, 6), skin, 0, -0.012, 0.094, head);
@@ -282,7 +296,7 @@ function biped(o) {
     [-1, 1].forEach(s => { const mu = mesh(cyl(0.004, 0.006, 0.06, 6), M.fur(o.beardColor ?? 0x1a110a), s * 0.025, 0.035, 0.015, b); mu.rotation.z = s * 1.0; });
   }
   mesh(sph(0.098, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), M.fur(o.hair ?? 0x1b120c), 0, 0.02, -0.01, head).scale.set(1, 0.9, 1);
-  mesh(sph(0.035, 12, 8), M.fur(o.hair ?? 0x1b120c), 0, 0.1, -0.05, head); // topknot 髮髻
+  mesh(sph(0.035, 12, 8), M.fur(o.hair ?? 0x1b120c), 0, 0.1, -0.05, head); // 髮髻
   const hg = o.helmet;
   if (hg === 'plume') {
     mesh(sph(0.11, 24, 14, 0, Math.PI * 2, 0, Math.PI * 0.55), armorMat, 0, 0.02, 0, head);
@@ -291,12 +305,12 @@ function biped(o) {
     mesh(cone(0.04, 0.17, 12), M.fur(o.cloth), 0, 0.06, -0.03, plume).rotation.x = -0.5;
     mesh(new THREE.TorusGeometry(0.11, 0.012, 8, 28), M.metal(o.secondary), 0, 0.02, 0, head).rotation.x = Math.PI / 2;
     [-1, 1].forEach(s => { const w = mesh(new THREE.BoxGeometry(0.02, 0.07, 0.06), armorMat, s * 0.1, -0.03, -0.01, head); });
-  } else if (hg === 'wingHat') { // 宰相 烏紗帽 with long wings
+  } else if (hg === 'wingHat') { // 宰相的長翅烏紗帽
     mesh(cyl(0.085, 0.1, 0.1), M.std(0x111111, { r: 0.35 }), 0, 0.1, -0.01, head);
     mesh(cyl(0.06, 0.07, 0.06), M.std(0x111111, { r: 0.35 }), 0, 0.17, -0.03, head);
     const wings = pivot(head, 0, 0.11, -0.07); rig.wings = wings;
     mesh(new THREE.BoxGeometry(0.5, 0.012, 0.03), M.std(0x111111, { r: 0.35 }), 0, 0, 0, wings);
-  } else if (hg === 'futou') { // 文官幞頭 short wings
+  } else if (hg === 'futou') { // 文官的短翅幞頭
     mesh(cyl(0.085, 0.1, 0.09), M.std(0x161616, { r: 0.4 }), 0, 0.09, -0.01, head);
     [-1, 1].forEach(s => { const w = mesh(new THREE.BoxGeometry(0.12, 0.01, 0.025), M.std(0x161616), s * 0.13, 0.1, -0.06, head); w.rotation.z = s * 0.25; });
   } else if (hg === 'scarf') { // 綸巾
@@ -308,18 +322,18 @@ function biped(o) {
   } else if (hg === 'band') {
     mesh(new THREE.TorusGeometry(0.097, 0.014, 8, 24), M.cloth(o.cloth), 0, 0.04, 0, head).rotation.x = Math.PI / 2 - 0.1;
   }
-  // arms
+  // 手臂
   [-1, 1].forEach(s => {
     const sh = pivot(chest, s * 0.17, 0.27, 0);
-    mesh(cap(0.038, 0.14), o.robe ? prim : (o.armor ? armorMat : prim), 0, -0.09, 0, sh);
-    const fore = pivot(sh, 0, -0.18, 0);
-    if (o.robe) { mesh(new THREE.CylinderGeometry(0.04, 0.075, 0.14, 14, 1, true), prim, 0, -0.07, 0, fore); } // wide sleeve 廣袖
-    else mesh(cap(0.033, 0.11), skin, 0, -0.06, 0, fore);
-    if (o.armor) mesh(cyl(0.04, 0.036, 0.08, 12), metal, 0, -0.05, 0, fore); // bracer
-    const hand = mesh(sph(0.035, 12, 8), skin, 0, -0.15, 0.01, fore);
+    mesh(cap(0.036, 0.17), o.robe ? prim : (o.armor ? armorMat : prim), 0, -0.105, 0, sh);   // 上臂
+    const fore = pivot(sh, 0, -0.215, 0);                                                    // 肘
+    if (o.robe) { mesh(new THREE.CylinderGeometry(0.04, 0.075, 0.16, 14, 1, true), prim, 0, -0.08, 0, fore); } // 廣袖
+    else mesh(cap(0.031, 0.13), skin, 0, -0.075, 0, fore);                                    // 前臂
+    if (o.armor) mesh(cyl(0.039, 0.035, 0.09, 12), metal, 0, -0.06, 0, fore);                // 護腕
+    const hand = mesh(sph(0.032, 12, 8), skin, 0, -0.17, 0.01, fore);
     rig.arms.push({ sh, fore, hand });
   });
-  const weap = pivot(rig.arms[1].fore, 0, -0.15, 0.02); rig.weapon = weap;
+  const weap = pivot(rig.arms[1].fore, 0, -0.17, 0.02); rig.weapon = weap;
   const steel = M.metal(0xdfe6ee, 0.15);
   switch (o.weapon) {
     case 'sword':
@@ -327,7 +341,7 @@ function biped(o) {
       mesh(new THREE.BoxGeometry(0.11, 0.02, 0.03), M.metal(o.secondary), 0, 0, 0.02, weap);
       mesh(cyl(0.012, 0.012, 0.06, 8), M.std(0x3a1a0a), 0, 0, -0.02, weap).rotation.x = Math.PI / 2;
       weap.rotation.x = -0.2; break;
-    case 'dao': // 刀 single-edged broadsword
+    case 'dao': // 單刃大刀
       mesh(new THREE.BoxGeometry(0.04, 0.3, 0.008), steel, 0, 0.0, 0.17, weap).rotation.x = Math.PI / 2;
       mesh(new THREE.BoxGeometry(0.07, 0.02, 0.03), metal, 0, 0, 0.02, weap);
       weap.rotation.x = -0.2; break;
@@ -376,7 +390,7 @@ function biped(o) {
   return root;
 }
 
-/* ------------------------------ quadruped rig (horse / elephant) ------------------------------ */
+/* ------------------------------ 四足骨架（馬、象） ------------------------------ */
 function quad(o) {
   const root = new THREE.Group();
   const s = o.size ?? 1;
@@ -387,7 +401,7 @@ function quad(o) {
   const body = pivot(root, 0, H, 0);
   const rig = { kind: 'quad', role: o.role, root, body, legs: [], H, bodyR, bodyL };
   mesh(cap(bodyR, bodyL, 10), fur, 0, 0, 0, body).rotation.x = Math.PI / 2;
-  // shoulder & haunch muscles for a less tube-like silhouette
+  // 肩部與臀部肌肉，避免身體像一根圓管
   mesh(sph(bodyR * 1.02, 18, 12), fur, 0, bodyR * 0.05, bodyL * 0.38, body).scale.set(0.95, 1.05, 1);
   mesh(sph(bodyR * 1.05, 18, 12), fur, 0, bodyR * 0.08, -bodyL * 0.4, body).scale.set(0.98, 1.05, 1);
   const legR = (o.legR ?? 0.035) * s;
@@ -400,13 +414,13 @@ function quad(o) {
     if (o.hoof) {
       mesh(cyl(legR * 1.05, legR * 1.25, legR * 1.3, 12), M.std(0x1c1410, { r: 0.4 }), 0, -legLen * 0.47, 0, knee);
       if (o.feathering) mesh(cyl(legR * 1.4, legR * 1.6, legR * 1.4, 12), M.fur(o.feathering, 0.95), 0, -legLen * 0.4, 0, knee);
-    } else { // elephant pad foot with toenails
+    } else { // 象的肉墊腳與趾甲
       mesh(cyl(legR * 1.15, legR * 1.3, legR * 1.2, 16), lowMat, 0, -legLen * 0.47, 0, knee);
       for (let i = -1; i <= 1; i++) mesh(sph(legR * 0.25, 8, 6), M.ivory(), i * legR * 0.6, -legLen * 0.5, legR * 1.15, knee);
     }
     rig.legs.push({ hp, knee, front: sz > 0, side: sx });
   });
-  // neck + head
+  // 頸部與頭部
   const neckLen = (o.neckLen ?? 0.1) * s;
   const neck = pivot(body, 0, bodyR * 0.4, bodyL * 0.55); rig.neck = neck;
   neck.rotation.x = -(o.neckAngle ?? 0.6);
@@ -419,12 +433,12 @@ function quad(o) {
   if (ml > 0.02) {
     const muz = mesh(cap(hr * (o.muzzleR ?? 0.55), ml, 8), o.muzzleColor ? M.fur(o.muzzleColor) : fur, 0, -hr * 0.2, hr * 0.7 + ml * 0.3, head);
     muz.rotation.x = Math.PI / 2 - (o.muzzleTilt ?? 0.3);
-    [-1, 1].forEach(sx => mesh(sph(hr * 0.09, 8, 6), M.phys(0x15100c, { r: 0.2, cc: 0.8 }), sx * hr * 0.18, -hr * 0.05 - ml * 0.55, hr * 0.75 + ml * 0.75, head)); // nostrils
+    [-1, 1].forEach(sx => mesh(sph(hr * 0.09, 8, 6), M.phys(0x15100c, { r: 0.2, cc: 0.8 }), sx * hr * 0.18, -hr * 0.05 - ml * 0.55, hr * 0.75 + ml * 0.75, head)); // 鼻孔
     if (o.blaze) { const bl = mesh(new THREE.PlaneGeometry(hr * 0.3, ml * 1.4), M.fur(0xf5f0e8), 0, hr * 0.15, hr * 0.98, head); bl.rotation.x = -0.6; }
   }
   rig.eyes = addEyes(head, hr * 0.12, hr * (o.eyeSpread ?? 0.55), hr * 0.25, hr * 0.78);
   rig.ears = [];
-  if (o.ears === 'big') { // flapping elephant ears on pivots
+  if (o.ears === 'big') { // 可搧動的象耳（掛在關節上）
     [-1, 1].forEach(sx => {
       const ep = pivot(head, sx * hr * 0.75, hr * 0.15, -hr * 0.25);
       const e = mesh(new THREE.CircleGeometry(hr * 1.2, 24), M.hide(o.color), sx * hr * 0.6, -hr * 0.2, 0, ep);
@@ -441,7 +455,7 @@ function quad(o) {
       rig.ears.push(ep);
     });
   }
-  if (o.mane) { // flowing horse mane + forelock
+  if (o.mane) { // 飄動的馬鬃與額毛
     const mn = pivot(neck, 0, 0, -bodyR * 0.35); rig.mane = mn;
     for (let i = 0; i < 7; i++) {
       const t = mesh(new THREE.BoxGeometry(0.018 * s, neckLen * 0.28, bodyR * 0.55), M.fur(o.mane, 0.95), 0, neckLen * (0.1 + i * 0.14), -bodyR * 0.05, mn);
@@ -458,10 +472,10 @@ function quad(o) {
       seg.rotation.x = i ? 0.15 : -0.15; parent = seg; rig.trunkSegs.push(seg);
     }
     [-1, 1].forEach(sx => { const t = mesh(cone(hr * 0.1, hr * 0.95, 10), M.ivory(), sx * hr * 0.38, -hr * 0.6, hr * 0.95, head); t.rotation.x = Math.PI * 0.72; });
-    // forehead dome
+    // 隆起的額頭
     mesh(sph(hr * 0.8, 16, 12), fur, 0, hr * 0.45, hr * 0.2, head);
   }
-  // tail
+  // 尾巴
   const tail = pivot(body, 0, bodyR * 0.3, -bodyL * 0.62); rig.tail = tail;
   const tl = (o.tailLen ?? 0.18) * s;
   if (o.tail === 'horse') {
@@ -477,11 +491,11 @@ function quad(o) {
     const sd = mesh(new THREE.CylinderGeometry(bodyR * 1.07, bodyR * 1.07, bodyL * (o.howdah ? 0.75 : 0.45), 24, 1, true, -Math.PI * 0.45, Math.PI * 0.9), cloth, 0, 0, o.howdah ? 0 : bodyL * 0.08, body);
     sd.rotation.set(Math.PI / 2, Math.PI, 0);
     mesh(new THREE.TorusGeometry(bodyR * 1.08, 0.006 * s, 6, 24, Math.PI * 0.9), M.metal(o.metal), 0, 0, bodyL * 0.3, body).rotation.z = Math.PI * 0.05;
-    if (!o.howdah) { // leather saddle seat + stirrups
+    if (!o.howdah) { // 皮革馬鞍與馬鐙
       mesh(new THREE.BoxGeometry(bodyR * 0.9, bodyR * 0.25, bodyL * 0.35), M.std(0x4a2a14, { r: 0.45 }), 0, bodyR * 0.98, bodyL * 0.08, body);
       [-1, 1].forEach(sx => mesh(new THREE.TorusGeometry(0.018 * s, 0.004 * s, 6, 12), M.metal(o.metal), sx * bodyR * 1.05, -bodyR * 0.75, bodyL * 0.08, body).rotation.y = Math.PI / 2);
     }
-    if (o.howdah) { // 象轎 with canopy and faction banner
+    if (o.howdah) { // 象轎：頂篷與陣營旗幟
       const hw = pivot(body, 0, bodyR * 1.0, 0); rig.howdah = hw;
       mesh(new THREE.BoxGeometry(bodyR * 1.1, bodyR * 0.5, bodyL * 0.65), M.phys(o.primary, { r: 0.4, cc: 0.6 }), 0, bodyR * 0.25, 0, hw);
       mesh(cone(bodyR * 0.85, bodyR * 0.7, 4), M.metal(o.metal), 0, bodyR * 1.15, 0, hw).rotation.y = Math.PI / 4;
@@ -489,9 +503,9 @@ function quad(o) {
       const fl = pivot(hw, 0, bodyR * 1.5, 0); rig.flag = fl;
       mesh(cyl(0.004 * s, 0.004 * s, bodyR * 0.8, 6), M.metal(o.metal), 0, bodyR * 0.2, 0, fl);
       mesh(new THREE.PlaneGeometry(bodyR * 0.6, bodyR * 0.4), M.cloth(o.cloth), bodyR * 0.3, bodyR * 0.45, 0, fl);
-      // mahout 象夫 on the neck
+      // 騎在象頸上的象夫
       const mh = biped({ role: 'mahout', skin: 0xc68e5c, primary: o.cloth, secondary: o.secondary, metal: o.metal, cloth: o.cloth, helmet: 'band', weapon: 'none', emblem: o.emblem, emblemColor: o.emblemColor });
-      mh.scale.setScalar(0.5); mh.position.set(0, bodyR * 0.75 - 0.36 * 0.5 + 0.02, bodyL * 0.5); body.add(mh);
+      const ms = o.crew ?? 0.6; mh.scale.setScalar(ms); mh.position.set(0, bodyR * 0.75 - HIP * ms + 0.02, bodyL * 0.5); body.add(mh);
       rig.rider = mh.userData.rig; rig.riderSeated = true;
     }
   }
@@ -503,8 +517,8 @@ function quad(o) {
   }
   if (o.rider) { // 傌 = 人 + 馬
     const r = biped({ ...o.rider, role: 'rider' });
-    r.scale.setScalar(0.72);
-    r.position.set(0, bodyR * 1.05 - 0.36 * 0.72 + 0.025, bodyL * 0.08);
+    const rs = o.crew ?? 0.55; r.scale.setScalar(rs);
+    r.position.set(0, bodyR * 1.05 - HIP * rs + 0.02, bodyL * 0.08);
     body.add(r);
     rig.rider = r.userData.rig; rig.riderSeated = true;
   }
@@ -512,11 +526,11 @@ function quad(o) {
   return root;
 }
 
-/* ------------------------------ war machines ------------------------------ */
+/* ------------------------------ 戰車與砲 ------------------------------ */
 function wheel(r, mat, spokes = 8) {
   const g = new THREE.Group();
   mesh(new THREE.TorusGeometry(r, r * 0.09, 8, 28), mat, 0, 0, 0, g);
-  mesh(new THREE.TorusGeometry(r * 1.0, r * 0.03, 6, 28), M.metal(0x3a3a3a, 0.5), 0, 0, 0, g); // iron tyre
+  mesh(new THREE.TorusGeometry(r * 1.0, r * 0.03, 6, 28), M.metal(0x3a3a3a, 0.5), 0, 0, 0, g); // 鐵輪箍
   mesh(cyl(r * 0.18, r * 0.18, r * 0.3, 12), mat, 0, 0, 0, g).rotation.x = Math.PI / 2;
   for (let i = 0; i < spokes; i++) { const sp = mesh(cyl(r * 0.04, r * 0.04, r * 1.8, 6), mat, 0, 0, 0, g); sp.rotation.z = (i / spokes) * Math.PI; }
   g.rotation.y = Math.PI / 2;
@@ -546,14 +560,14 @@ function cannonModel(o) { // 炮 — 火藥銅砲
   mesh(sph(0.03, 10, 8), M.metal(o.secondary), 0, 0, -0.2, barrelPivot);
   rig.fuse = pivot(barrelPivot, 0, 0.07, -0.14);
   rig.muzzle = pivot(barrelPivot, 0, 0, 0.3);
-  // powder keg & cannonballs
+  // 火藥桶與砲彈
   mesh(cyl(0.045, 0.045, 0.08, 14), M.std(0x5b3a20, { r: 0.7 }), -0.2, 0.04, -0.18, root);
   [[0.19, 0.03, 0.15], [0.23, 0.03, 0.18], [0.21, 0.07, 0.17]].forEach(([x, y, z]) => mesh(sph(0.03, 12, 8), M.metal(0x222222, 0.5), x, y, z, root));
   rig.flag = banner(carriage, o, -0.1, 0, -0.2, 0.5, o.ch);
   mesh(new THREE.BoxGeometry(0.16, 0.13, 0.02), wood, 0, 0.06, 0.19, carriage); mesh(new THREE.BoxGeometry(0.16, 0.13, 0.02), wood, 0, 0.06, -0.25, carriage);
   emblem(carriage, o.ch, o.emblemColor, 0, 0.06, 0.201, 0, 0.055); emblem(carriage, o.ch, o.emblemColor, 0, 0.06, -0.261, Math.PI, 0.055);
   const g = biped({ ...o, role: 'gunner', helmet: 'cap', weapon: 'none', emblem: o.ch });
-  g.scale.setScalar(0.62); g.position.set(0.18, 0, -0.2); g.rotation.y = -0.4; root.add(g);
+  g.scale.setScalar(crewScale('cannon')); g.position.set(0.15, 0, -0.17); g.rotation.y = -0.4; root.add(g);
   rig.crew = g.userData.rig;
   root.userData.rig = rig;
   return root;
@@ -570,20 +584,20 @@ function catapultModel(o) { // 砲 — 石字旁：投石機
     const w = wheel(0.09, wood, 6); w.position.set(s * 0.14, -0.01, s > 0 ? 0.16 : 0.16); frame.add(w); rig.wheels.push(w);
     const w2 = wheel(0.09, wood, 6); w2.position.set(s * 0.14, -0.01, -0.16); frame.add(w2); rig.wheels.push(w2);
   });
-  mesh(cyl(0.015, 0.015, 0.26, 8), M.metal(0x444444), 0, 0.29, -0.02, frame).rotation.z = Math.PI / 2; // axle
+  mesh(cyl(0.015, 0.015, 0.26, 8), M.metal(0x444444), 0, 0.29, -0.02, frame).rotation.z = Math.PI / 2; // 輪軸
   const arm = pivot(frame, 0, 0.29, -0.02); rig.arm = arm;
   mesh(new THREE.BoxGeometry(0.03, 0.03, 0.52), wood, 0, 0, 0.06, arm);
   const bucket = mesh(sph(0.055, 14, 10, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), M.std(0x3a2412, { r: 0.6, extra: { side: THREE.DoubleSide } }), 0, 0.02, -0.2, arm);
   rig.stone = mesh(sph(0.045, 12, 10), M.std(0x8a8580, { r: 0.95, extra: { bumpMap: skinBump(), bumpScale: 2 } }), 0, 0.045, -0.2, arm);
-  mesh(new THREE.BoxGeometry(0.1, 0.1, 0.08), M.metal(0x4a4a4a, 0.6), 0, -0.04, 0.32, arm); // counterweight
-  arm.rotation.x = 0.55; // cocked: bucket down at the back
-  // pile of stones
+  mesh(new THREE.BoxGeometry(0.1, 0.1, 0.08), M.metal(0x4a4a4a, 0.6), 0, -0.04, 0.32, arm); // 配重
+  arm.rotation.x = 0.55; // 上弦狀態：投石斗壓在後方
+  // 一堆石彈
   [[-0.18, 0.025, -0.2], [-0.21, 0.025, -0.16], [-0.19, 0.06, -0.18]].forEach(([x, y, z]) => mesh(sph(0.03, 10, 8), M.std(0x8a8580, { r: 0.95 }), x, y, z, root));
   rig.flag = banner(frame, o, 0.12, 0, -0.22, 0.5, o.ch);
   [0.24, -0.24].forEach(z => mesh(new THREE.BoxGeometry(0.2, 0.12, 0.02), wood, 0, 0.07, z, frame));
   emblem(frame, o.ch, o.emblemColor, 0, 0.07, 0.251, 0, 0.05); emblem(frame, o.ch, o.emblemColor, 0, 0.07, -0.251, Math.PI, 0.05);
   const g = biped({ ...o, role: 'loader', helmet: 'band', weapon: 'none', emblem: o.ch });
-  g.scale.setScalar(0.6); g.position.set(-0.2, 0, -0.06); g.rotation.y = 0.6; root.add(g);
+  g.scale.setScalar(crewScale('catapult')); g.position.set(-0.17, 0, -0.05); g.rotation.y = 0.6; root.add(g);
   rig.crew = g.userData.rig;
   root.userData.rig = rig;
   return root;
@@ -592,7 +606,7 @@ function chariotModel(o, { horseDrawn = false } = {}) {
   const root = new THREE.Group();
   const wood = M.wood(4);
   const rig = { kind: 'chariot', role: horseDrawn ? 'horseChariot' : 'chariot', root, wheels: [], wheelR: horseDrawn ? 0.16 * 0.8 : 0.16 };
-  const holder = pivot(root, 0, 0, horseDrawn ? -0.16 : 0);
+  const holder = pivot(root, 0, 0, horseDrawn ? -0.36 : 0);   // 馬拉戰車：車廂後移，整組置中於棋格
   const body = pivot(holder, 0, 0.17, 0); rig.body = body;
   mesh(new THREE.BoxGeometry(0.3, 0.03, 0.26), wood, 0, 0, 0, body);
   const box = M.phys(o.primary, { r: 0.4, cc: 0.7 });
@@ -601,21 +615,21 @@ function chariotModel(o, { horseDrawn = false } = {}) {
   mesh(new THREE.TorusGeometry(0.03, 0.008, 6, 16), M.metal(o.metal), 0, 0.08, 0.142, body);
   [-1, 1].forEach(s => { const w = wheel(0.16, wood, 10); w.position.set(s * 0.19, 0, 0); body.add(w); rig.wheels.push(w); });
   mesh(cyl(0.012, 0.012, 0.42, 6), wood, 0, -0.01, 0.0, body).rotation.z = Math.PI / 2;
-  [-1, 1].forEach(s => mesh(cone(0.012, 0.08, 6), M.metal(o.metal), s * 0.25, 0, 0, body).rotation.z = -s * Math.PI / 2); // axle blades
+  [-1, 1].forEach(s => mesh(cone(0.012, 0.08, 6), M.metal(o.metal), s * 0.25, 0, 0, body).rotation.z = -s * Math.PI / 2); // 輪軸 blades
   const shaft = mesh(cyl(0.01, 0.012, 0.45, 6), wood, 0, 0.0, 0.33, body); shaft.rotation.x = Math.PI / 2 - 0.08;
   rig.flag = banner(body, o, -0.12, 0.0, -0.11, 0.6, o.ch);
   emblem(body, o.ch, o.emblemColor, 0.05, 0.07, 0.142, 0, 0.05); mesh(new THREE.BoxGeometry(0.3, 0.12, 0.02), box, 0, 0.07, -0.13, body);
   emblem(body, o.ch, o.emblemColor, 0, 0.07, -0.142, Math.PI, 0.05);
   if (horseDrawn) {
     const h = quad(horseOpts(o, { color: 0x3b2414, mane: 0x120a05, legColor: 0x1a0f08, role: 'drafthorse', emblem: o.ch }));
-    h.scale.setScalar(0.72); h.position.set(0, 0, 0.47); root.add(h);
+    h.scale.setScalar(0.8); h.position.set(0, 0, 0.23); root.add(h);
     rig.horse = h.userData.rig;
     const d = biped({ ...o, role: 'driver', helmet: 'cap', weapon: 'none', armor: true, emblem: o.ch });
-    d.scale.setScalar(0.62); d.position.set(0, 0.01, 0.02); body.add(d);
+    d.scale.setScalar(crewScale('horseChariot')); d.position.set(0, 0.01, 0.02); body.add(d);
     rig.crew = d.userData.rig;
   } else {
     const d = biped({ ...o, role: 'charioteer', armor: true, helmet: 'plume', weapon: 'halberd', cape: true, emblem: o.ch });
-    d.scale.setScalar(0.74); d.position.set(0.02, 0.01, -0.02); body.add(d);
+    d.scale.setScalar(crewScale('chariot')); d.position.set(0.02, 0.01, -0.02); body.add(d);
     rig.crew = d.userData.rig;
   }
   root.userData.rig = rig;
@@ -623,17 +637,18 @@ function chariotModel(o, { horseDrawn = false } = {}) {
 }
 function horseOpts(base, over = {}) {
   return {
-    ...base, role: 'horse', matFn: M.coat, color: 0x6b3d1f, legLen: 0.27, legR: 0.03, bodyR: 0.09, bodyL: 0.28, neckLen: 0.17, neckAngle: 0.45, neckThick: 0.52,
+    ...base, role: 'horse', matFn: M.coat, color: 0x6b3d1f, legLen: 0.31, legR: 0.028, bodyR: 0.085, bodyL: 0.34, neckLen: 0.2, neckAngle: 0.82, neckThick: 0.5,   // 修長的馬身與四肢、脖子約 45 度前傾
     headR: 0.055, skullW: 0.8, muzzle: 0.1, muzzleR: 0.6, muzzleTilt: 0.95, eyeSpread: 0.6, ears: 'pointed', mane: 0x1a100a, tail: 'horse', tailLen: 0.3,
     hoof: true, saddle: true, bridle: true, legColor: 0x2a170b, tailUp: -0.7, ...over,
   };
 }
 
-/* ------------------------------ model factory ------------------------------ */
+/* ------------------------------ 模型工廠 ------------------------------ */
 function buildFigure(model, pal, side, ch) {
   const emblemColor = pal.text;
   const base = { primary: pal.primary, secondary: pal.secondary, metal: pal.metal, cloth: pal.cloth, emblem: ch, emblemColor, ch };
   const rider = { ...base, armor: true, helmet: 'plume', weapon: 'spear', cape: true };
+  const crew = crewScale(model);
   switch (model) {
     case 'marshal': return biped({ ...base, role: 'marshal', armor: true, cape: true, helmet: 'plume', weapon: 'sword', beard: 'long' });
     case 'marshalHalberd': return biped({ ...base, role: 'marshal', armor: true, cape: true, helmet: 'plume', weapon: 'halberd', beard: 'long' });
@@ -644,10 +659,10 @@ function buildFigure(model, pal, side, ch) {
     case 'chancellor': return biped({ ...base, role: 'chancellor', robe: true, robeColor: 0x5b2a6e, secondary: pal.secondary, helmet: 'wingHat', weapon: 'tablet', beard: 'long', beardColor: 0x8a8a8a, skin: 0xdcae86 });
     case 'warElephant': return quad({ ...base, role: 'elephant', matFn: M.hide, color: 0x7d7a78, size: 1.15, legLen: 0.2, legR: 0.055, bodyR: 0.15, bodyL: 0.22, neckLen: 0.03, neckAngle: 0.2, neckThick: 0.85, headR: 0.1, muzzle: 0.0, ears: 'big', trunk: true, tail: 'thin', tailLen: 0.18, saddle: true, howdah: true, eyeSpread: 0.6 });
     case 'elephant': return quad({ ...base, role: 'elephant', matFn: M.hide, color: 0x85817e, size: 1.15, legLen: 0.2, legR: 0.055, bodyR: 0.15, bodyL: 0.22, neckLen: 0.03, neckAngle: 0.2, neckThick: 0.85, headR: 0.1, muzzle: 0.0, ears: 'big', trunk: true, tail: 'thin', tailLen: 0.18, eyeSpread: 0.6 });
-    case 'cavalry': return quad(horseOpts(base, { blaze: true, armorPlate: true, rider }));
-    case 'cavalryWhite': return quad(horseOpts(base, { color: 0xeeeae2, mane: 0xd8d2c6, legColor: 0xd9d3c8, armorPlate: true, rider }));
-    case 'cavalryRed': return quad(horseOpts(base, { color: 0x9a2a12, mane: 0x3a0e06, legColor: 0x5a160a, armorPlate: true, rider }));
-    case 'cavalryBlack': return quad(horseOpts(base, { color: 0x1d1a18, mane: 0x0a0807, legColor: 0x141210, blaze: true, armorPlate: true, rider }));
+    case 'cavalry': return quad(horseOpts(base, { blaze: true, armorPlate: true, rider, crew }));
+    case 'cavalryWhite': return quad(horseOpts(base, { color: 0xeeeae2, mane: 0xd8d2c6, legColor: 0xd9d3c8, armorPlate: true, rider, crew }));
+    case 'cavalryRed': return quad(horseOpts(base, { color: 0x9a2a12, mane: 0x3a0e06, legColor: 0x5a160a, armorPlate: true, rider, crew }));
+    case 'cavalryBlack': return quad(horseOpts(base, { color: 0x1d1a18, mane: 0x0a0807, legColor: 0x141210, blaze: true, armorPlate: true, rider, crew }));
     case 'chariot': return chariotModel(base);
     case 'horseChariot': return chariotModel(base, { horseDrawn: true });
     case 'cannon': return cannonModel(base);
@@ -659,7 +674,7 @@ function buildFigure(model, pal, side, ch) {
   }
 }
 
-/** Build a full piece: a free-standing figure (no base) with its character on its body. */
+/** 建立完整棋子：不帶底座、可獨立站立的人物或器物，棋字印在身上。 */
 export function buildPiece(side, type, typeKey, model, pal, opts = {}) {
   const root = new THREE.Group();
   const allowed = MODEL_OPTIONS[typeKey][side];
@@ -668,11 +683,10 @@ export function buildPiece(side, type, typeKey, model, pal, opts = {}) {
   root.add(holder);
   const ch = NAMES[side][type];
   const fig = buildFigure(model, pal, side, ch);
-  const shrink = model === 'horseChariot' ? 0.8 : model.startsWith('cavalry') ? 0.95 : 1;
-  const scale = 1.5 * shrink * (opts.figureScale ?? 1);
+  const scale = scaleOf(model) * (opts.figureScale ?? 1);
   fig.scale.multiplyScalar(scale);
   holder.add(fig);
-  // soft contact shadow so figures feel planted on the wood
+  // 柔和的接觸陰影，讓人物像真的站在木盤上
   const blob = new THREE.Mesh(new THREE.CircleGeometry(0.36, 32), new THREE.MeshBasicMaterial({ map: contactTex(), transparent: true, depthWrite: false, opacity: 0.55 }));
   blob.rotation.x = -Math.PI / 2; blob.position.y = 0.004; blob.renderOrder = 1;
   root.add(blob);
